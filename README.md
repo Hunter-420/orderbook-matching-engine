@@ -12,16 +12,17 @@ The engine enforces price-time priority: among all resting orders at a price lev
 matching-engine/
   Makefile                       build configuration
   data/
-    input_orders.csv             Phase 1 test scenarios
+    input_orders.csv             Phase 1 and 2 test scenarios
   include/
-    engine.hpp                   OrderNode, PriceLevel, Engine declarations
-    memory_pool.hpp              MemoryPool class (added in Phase 2)
+    types.hpp                    Shared types (OrderNode, PriceLevel, Fill)
+    engine.hpp                   Engine class
+    memory_pool.hpp              Pre-allocated MemoryPool class
     protocol.hpp                 Wire structs OrderRequest, ExecutionReport (added in Phase 3)
     telemetry.hpp                TelemetryBuffer for latency sampling (added in Phase 4)
   src/
     main.cpp                     Entry point, evolves across all four phases
     engine.cpp                   Matching logic and book management
-    memory_pool.cpp              Pre-allocated pool implementation (Phase 2)
+    memory_pool.cpp              Pre-allocated pool implementation
   tests/
     client_simulator.py          TCP test client for Phase 3 and Phase 4
 ```
@@ -54,68 +55,29 @@ The engine holds two sides of a limit order book. The buy side sorts prices high
 
 Orders at the same price are linked in a doubly linked list. Head is the oldest order, tail is the newest. This structure encodes time priority without storing timestamps: the head is always matched first.
 
-### Data structures
-
-```
-OrderNode
-  order_id    uint32_t   unique identifier
-  price       uint32_t   integer cents, never float
-  quantity    uint32_t   remaining shares, decreases on partial fills
-  side        char       B for buy, S for sell
-  next_idx    uint32_t   slot index of the next order at this price
-  prev_idx    uint32_t   slot index of the previous order at this price
-
-PriceLevel
-  head_idx    uint32_t   oldest order at this price, matched first
-  tail_idx    uint32_t   newest order at this price, matched last
-  total_vol   uint64_t   sum of all remaining quantities at this price
-
-Bids map      std::map with std::greater, begin() always returns best bid
-Asks map      std::map with std::less, begin() always returns best ask
-
-Order directory   std::unordered_map<order_id, OrderNode*>   Phase 1 only
-```
-
-### Phase 1 allocation model
-
-Phase 1 uses `new` and `delete` for every `OrderNode`. This is intentional. Correctness is the only goal in Phase 1. The heap allocation cost is replaced in Phase 2.
-
-### Running Phase 1
-
-```bash
-./matching_engine_bin < data/input_orders.csv
-```
-
-The CSV format is:
-
-```
-ORDER_ID,SIDE,PRICE,QTY,TYPE
-1,S,10100,100,N     new sell order, 100 shares at $101.00
-2,B,10100,100,N     new buy order, 100 shares at $101.00
-2,C,0,0,C           cancel order with id 2
-```
-
-Price is stored as integer cents. `$101.00` is `10100`. TYPE is `N` for new or `C` for cancel. For a cancel row, ORDER_ID is the id of the order to cancel.
-
-### Validation scenarios covered
-
-**Basic match.** A sell followed by a buy at the same price. One fill is produced. Both orders are removed from the book.
-
-**Time priority.** Two sells at the same price submitted in sequence. A buy for the combined total arrives. The earlier sell is consumed fully before the later sell is touched. Fill order follows arrival order exactly.
-
-**Partial fill.** A buy rests in the book. A sell arrives for less than the resting buy quantity. A fill is generated. The buy remains with the reduced quantity. The sell is fully consumed.
-
-**No match.** Buy at $99, sell at $101. Prices do not cross. Both orders rest. No fill is produced.
-
-**Cancellation.** A buy is submitted. It is cancelled by ID. A matching sell arrives. No fill is produced because the buy is gone from the book.
-
-**Mid-queue cancellation.** Three sells at the same price arrive in order A, B, C. B is cancelled. A buy arrives that covers A and C combined. A fills first. C fills second. B is completely skipped. No crash, no dangling pointer, no incorrect fill.
-
 ---
 
-## Phase 2: Memory Pool
+## Phase 2: Memory Pool Optimization
 
-Coming in the next phase. Replaces `new` and `delete` with a pre-allocated flat array of one million `OrderNode` slots managed by a free list. Replaces the `unordered_map` order directory with a flat `vector<uint32_t>` indexed directly by order ID. Eliminates every OS memory call on the matching path.
+**Goal:** eliminate OS memory allocation (heap calls) on the critical path.
+
+### The Memory Pool
+
+In Phase 1, `new` and `delete` were used for every `OrderNode`, invoking the OS allocator (`malloc`), which takes hundreds of nanoseconds and scatters nodes across RAM.
+
+Phase 2 replaces this with `MemoryPool`, a pre-allocated flat `std::vector` of one million `OrderNode` slots. The OS is asked for memory exactly once at startup. 
+- **Free list:** Available slots are chained using their own `next_idx` fields. 
+- **O(1) allocation:** Claiming a slot simply pops the head of this free list.
+- **Cache locality:** Nodes stay packed within contiguous memory, increasing the chance of L1/L2 cache hits.
+
+### The Flat Order Directory
+
+In Phase 1, canceling an order required an `std::unordered_map` lookup by `order_id`, which involved hashing and bucket traversal. 
+Phase 2 uses a flat `std::vector<uint32_t>` indexed directly by `order_id`. A direct index lookup is a single multiply-and-add instruction, dropping lookup time from ~50ns to ~1ns.
+
+### 4-byte Linked List
+
+The doubly linked list used for price queues (`next_idx`, `prev_idx`) stores 32-bit slot indices instead of 64-bit raw pointers. This halves the link overhead, reducing the size of an `OrderNode` and fitting more orders into a single 64-byte cache line.
 
 ---
 
