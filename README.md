@@ -17,7 +17,7 @@ matching-engine/
     types.hpp                    Shared types (OrderNode, PriceLevel, Fill)
     engine.hpp                   Engine class
     memory_pool.hpp              Pre-allocated MemoryPool class
-    protocol.hpp                 Wire structs OrderRequest, ExecutionReport (added in Phase 3)
+    protocol.hpp                 Wire structs OrderRequest, ExecutionReport
     telemetry.hpp                TelemetryBuffer for latency sampling (added in Phase 4)
   src/
     main.cpp                     Entry point, evolves across all four phases
@@ -83,7 +83,20 @@ The doubly linked list used for price queues (`next_idx`, `prev_idx`) stores 32-
 
 ## Phase 3: Network Layer
 
-Coming in the next phase. Adds a single-threaded epoll event loop, fixed-width binary wire protocol, TCP_NODELAY on every socket, and a Python test client.
+**Goal:** bring the engine online using a non-blocking architecture and a zero-copy wire protocol.
+
+### epoll Event Loop
+
+Phase 3 introduces an `epoll`-based event loop. The engine is single-threaded. It waits for network events and processes incoming order requests immediately. Multithreading the matching logic would require mutexes, which destroy deterministic latency and cause context switching. A single thread with `epoll` handles high-throughput matching much faster than multi-threaded locking designs.
+
+### Fixed-Width Binary Wire Protocol
+
+Text protocols like JSON or FIX require parsing logic (e.g. searching for delimiters, converting strings to integers). Parsing is slow and unpredictable.
+This engine uses a fixed-width binary protocol. Structures are packed with `#pragma pack(push, 1)`. Deserialization is just a strict-aliasing safe `std::memcpy` casting a byte buffer to a C++ struct.
+
+### TCP_NODELAY
+
+Nagle's algorithm is disabled on all sockets. Without this, the OS TCP stack might wait to buffer enough bytes before sending an ExecutionReport over the wire, causing latency spikes in the tens of milliseconds.
 
 ---
 
