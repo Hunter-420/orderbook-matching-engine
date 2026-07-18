@@ -1,0 +1,17 @@
+Successfully pinned to CPU core 1
+Engine listening on port 9000
+Client connected: fd 13
+Client disconnected: fd 13
+
+Shutting down engine...
+
+=== LATENCY PERCENTILES (ns) ===
+Samples: 1000
+Min:     732 ns
+p50:     3012 ns
+p90:     14638 ns
+p99:     24958 ns
+p99.9:   84334 ns
+p99.99:  84334 ns
+Max:     84334 ns
+================================

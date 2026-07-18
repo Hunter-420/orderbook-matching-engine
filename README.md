@@ -18,13 +18,13 @@ matching-engine/
     engine.hpp                   Engine class
     memory_pool.hpp              Pre-allocated MemoryPool class
     protocol.hpp                 Wire structs OrderRequest, ExecutionReport
-    telemetry.hpp                TelemetryBuffer for latency sampling (added in Phase 4)
+    telemetry.hpp                TelemetryBuffer for latency sampling
   src/
     main.cpp                     Entry point, evolves across all four phases
     engine.cpp                   Matching logic and book management
     memory_pool.cpp              Pre-allocated pool implementation
   tests/
-    client_simulator.py          TCP test client for Phase 3 and Phase 4
+    client_simulator.py          TCP test client (supports correctness and load testing)
 ```
 
 ---
@@ -102,7 +102,30 @@ Nagle's algorithm is disabled on all sockets. Without this, the OS TCP stack mig
 
 ## Phase 4: Hardware Isolation and Latency Measurement
 
-Coming in the next phase. Adds CPU affinity pinning, nanosecond timestamp capture, a pre-allocated telemetry ring buffer, and percentile output on shutdown.
+**Goal:** achieve deterministic latency and measure performance in the nanosecond range.
+
+### CPU Affinity Pinning
+
+The Linux OS scheduler constantly pauses threads and moves them between CPU cores to balance workload. Moving cores invalidates the L1 and L2 caches, causing massive latency spikes (jitter).
+The engine uses `pthread_setaffinity_np` at startup to pin itself to a specific CPU core. This guarantees that the engine remains on one core and keeps the order book hot in that core's L1/L2 cache.
+
+### Latency Telemetry
+
+To measure performance without impacting it, the engine uses `TelemetryBuffer`, a pre-allocated array of one million `int64_t` slots.
+When a packet hits user-space, `std::chrono::high_resolution_clock` captures a start timestamp. When the resulting execution reports are pushed to the socket, an end timestamp is captured.
+The difference (in nanoseconds) is recorded in the telemetry buffer in O(1) time.
+
+### Percentile Analysis
+
+Recording the data is fast, but sorting it is slow.
+To prevent analysis from blocking the engine, the percentiles (p50, p90, p99, p99.9, p99.99) are only calculated when the engine is gracefully shut down via `SIGINT`.
+
+You can test the latency by starting the engine in the background and running the Python client in load mode:
+```bash
+./matching_engine_bin &
+tests/client_simulator.py --load
+kill -INT $!
+```
 
 ---
 
