@@ -134,7 +134,7 @@ function uiCallback(event) {
         const sClass = event.side === 'B' ? 't-buy' : 't-sell';
         line = `<div class="tape-entry"><span class="${sClass}">NEW ${event.side === 'B'?'BUY':'SELL'}</span> Order ${event.id}: ${event.qty} @ $${(event.price/100).toFixed(2)}</div>`;
     } else if (event.type === 'FILL') {
-        line = `<div class="tape-entry t-fill">FILL</div> <span style="font-size:0.8rem">Matched ${event.buyId} & ${event.sellId} | ${event.qty} shares @ $${(event.price/100).toFixed(2)}</span>`;
+        line = `<div class="tape-entry t-fill">FILL</div> <span style="font-size:0.8rem; font-weight: 500; color: var(--text-main)">Matched ${event.incId} & ${event.resId} | ${event.qty} shares @ $${(event.price/100).toFixed(2)}</span>`;
     } else if (event.type === 'CANCEL') {
         line = `<div class="tape-entry" style="color:var(--text-light)">CANCEL Order ${event.id}</div>`;
     }
@@ -223,12 +223,12 @@ function renderBook() {
 function renderMemory() {
     const snap = engine.getMemorySnapshot();
     
-    document.getElementById('activeCount').innerText = snap.activeOrders;
-    document.getElementById('freeCount').innerText = snap.freeSlots;
-    document.getElementById('nextFreeIdx').innerText = snap.nextFreeIdx;
+    document.getElementById('activeCount').innerText = snap.activeCount;
+    document.getElementById('freeCount').innerText = (snap.capacity - snap.activeCount);
+    document.getElementById('nextFreeIdx').innerText = snap.nextFree;
     
-    const capacity = snap.activeOrders + snap.freeSlots;
-    const pct = (snap.activeOrders / capacity) * 100;
+    const capacity = snap.capacity;
+    const pct = (snap.activeCount / capacity) * 100;
     document.getElementById('usedPct').innerText = pct.toFixed(2) + '%';
     document.getElementById('memBarFill').style.width = pct + '%';
     
@@ -287,8 +287,8 @@ function renderNodes() {
             <td class="${sideCl}"><strong>${n.side}</strong></td>
             <td>$${(n.price/100).toFixed(2)}</td>
             <td>${n.qty}</td>
-            <td style="color:var(--text-light)">${n.prev === null ? 'NONE' : n.prev}</td>
-            <td style="color:var(--text-light)">${n.next === null ? 'NONE' : n.next}</td>
+            <td style="color:var(--text-dim); font-weight: 500;">${n.prev === -1 ? 'NONE' : n.prev}</td>
+            <td style="color:var(--text-dim); font-weight: 500;">${n.next === -1 ? 'NONE' : n.next}</td>
         </tr>`;
         
         if (!chainsByPrice[n.price]) chainsByPrice[n.price] = [];

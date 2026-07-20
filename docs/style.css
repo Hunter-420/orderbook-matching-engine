@@ -4,19 +4,19 @@
   --bg-alt: #f1f5f9;
   
   --text-main: #0f172a;
-  --text-dim: #64748b;
-  --text-light: #94a3b8;
+  --text-dim: #475569;
+  --text-light: #64748b;
   
-  --border: #e2e8f0;
-  --border-focus: #cbd5e1;
+  --border: #cbd5e1;
+  --border-focus: #94a3b8;
   
   --primary: #3b82f6;
   --primary-hover: #2563eb;
   
-  --buy: #10b981;
-  --buy-dim: rgba(16, 185, 129, 0.1);
-  --sell: #ef4444;
-  --sell-dim: rgba(239, 68, 68, 0.1);
+  --buy: #059669;
+  --buy-dim: rgba(5, 150, 105, 0.12);
+  --sell: #dc2626;
+  --sell-dim: rgba(220, 38, 38, 0.12);
   
   --font-sans: 'Inter', -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
@@ -437,11 +437,12 @@ a:hover {
 .freelist-box.head { background: var(--primary); color: white; border-color: var(--primary); font-weight: 600; }
 .slots-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); gap: 8px; margin-bottom: 16px; }
 .slot-box {
-  background: var(--bg-alt); border: 1px dashed var(--border); border-radius: 4px;
+  background: var(--bg-main); border: 1px solid var(--border-focus); border-radius: 4px;
   height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-dim); transition: all 0.2s;
+  font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-dim); transition: all 0.2s;
+  font-weight: 500;
 }
-.slot-box.used { background: var(--bg-panel); border: 1px solid var(--primary); color: var(--primary); font-weight: 600; }
+.slot-box.used { background: var(--bg-panel); border: 2px solid var(--primary); color: var(--primary); font-weight: 700; }
 .pool-info { font-size: 0.85rem; color: var(--text-dim); line-height: 1.6; }
 
 /* Nodes */
