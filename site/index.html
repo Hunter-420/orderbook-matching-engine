@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Limit Order Book Engine — Live Demo</title>
+  <meta name="description" content="Interactive browser demo of a single-threaded C++ limit order book matching engine. Visualize price-time priority matching, memory pool allocation, and linked-list node data in real time." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ===== NAV ===== -->
+<nav class="nav">
+  <div class="nav-inner">
+    <div class="nav-brand">
+      <span class="brand-icon">⚡</span>
+      <span class="brand-name">LOB Engine</span>
+    </div>
+    <div class="nav-links">
+      <a href="#demo">Demo</a>
+      <a href="#memory">Memory</a>
+      <a href="#nodes">Nodes</a>
+      <a href="#phases">Phases</a>
+      <a href="https://github.com/Hunter-420/orderbook-matching-engine" target="_blank" class="nav-btn">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ===== HERO ===== -->
+<section class="hero">
+  <div class="hero-bg"></div>
+  <div class="hero-content">
+    <div class="hero-badge">Single-Threaded · C++17 · Linux epoll</div>
+    <h1>Limit Order Book<br /><span class="gradient-text">Matching Engine</span></h1>
+    <p class="hero-sub">
+      A production-grade matching engine built in four phases — from a correct in-memory core
+      to a hardware-pinned, nanosecond-latency networked exchange. Run the live simulation below.
+    </p>
+    <div class="hero-stats">
+      <div class="stat"><span class="stat-num">&lt;3μs</span><span class="stat-label">Median Latency</span></div>
+      <div class="stat"><span class="stat-num">1M</span><span class="stat-label">Pre-allocated Slots</span></div>
+      <div class="stat"><span class="stat-num">14B</span><span class="stat-label">Wire Protocol</span></div>
+      <div class="stat"><span class="stat-num">0</span><span class="stat-label">Heap Allocs on Hot Path</span></div>
+    </div>
+    <div class="hero-cta">
+      <a href="#demo" class="btn-primary">Live Demo</a>
+      <a href="https://www.khanalnischal.com.np/projects/single-threaded-limit-order-book-matching-engine-in-c" target="_blank" class="btn-ghost">Project Page</a>
+    </div>
+  </div>
+  <div class="hero-visual">
+    <div class="ticker-preview" id="heroTicker"></div>
+  </div>
+</section>
+
+<!-- ===== DEMO ===== -->
+<section class="section" id="demo">
+  <div class="container">
+    <div class="section-header">
+      <h2>Interactive Demo</h2>
+      <p>This is a faithful JavaScript implementation of the C++ matching engine running in your browser. Price-time priority, partial fills, cancellations — all exact.</p>
+    </div>
+
+    <div class="demo-grid">
+      <!-- Order Entry -->
+      <div class="panel" id="order-entry">
+        <div class="panel-header">
+          <span class="panel-icon">📋</span>
+          <h3>Place Order</h3>
+        </div>
+        <div class="order-form">
+          <div class="side-toggle">
+            <button class="side-btn active" id="buyBtn" onclick="setSide('B')">BUY</button>
+            <button class="side-btn" id="sellBtn" onclick="setSide('S')">SELL</button>
+          </div>
+          <div class="form-row">
+            <label>Price ($)</label>
+            <input type="number" id="priceInput" value="100.00" step="0.25" min="0.01" />
+          </div>
+          <div class="form-row">
+            <label>Quantity</label>
+            <input type="number" id="qtyInput" value="100" step="10" min="1" />
+          </div>
+          <button class="submit-btn" onclick="placeOrder()">Submit Order</button>
+          <button class="cancel-all-btn" onclick="cancelAll()">Cancel All Resting</button>
+        </div>
+
+        <div class="panel-header" style="margin-top:24px">
+          <span class="panel-icon">🎲</span>
+          <h3>Auto Simulation</h3>
+        </div>
+        <div class="sim-controls">
+          <button class="sim-btn" id="simBtn" onclick="toggleSim()">▶ Start Market Sim</button>
+          <div class="form-row">
+            <label>Speed (ms)</label>
+            <input type="range" id="speedInput" min="100" max="2000" value="600" oninput="updateSpeed(this.value)" />
+            <span id="speedLabel">600ms</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Order Book Ladder -->
+      <div class="panel" id="book-panel">
+        <div class="panel-header">
+          <span class="panel-icon">📊</span>
+          <h3>Order Book Ladder</h3>
+          <div class="panel-badge">LIVE</div>
+        </div>
+        <div class="book-container">
+          <div class="book-header-row">
+            <span>BID QTY</span>
+            <span>PRICE</span>
+            <span>ASK QTY</span>
+          </div>
+          <div id="bookLadder" class="book-ladder"></div>
+        </div>
+        <div class="spread-info" id="spreadInfo">Spread: —</div>
+      </div>
+
+      <!-- Execution Tape -->
+      <div class="panel" id="tape-panel">
+        <div class="panel-header">
+          <span class="panel-icon">⚡</span>
+          <h3>Execution Tape</h3>
+        </div>
+        <div id="execTape" class="exec-tape"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== MEMORY ===== -->
+<section class="section section-alt" id="memory">
+  <div class="container">
+    <div class="section-header">
+      <h2>Memory Pool State</h2>
+      <p>The engine pre-allocates one million <code>OrderNode</code> slots at startup. Every order allocation and deallocation is an O(1) array index operation — no OS heap calls on the hot path.</p>
+    </div>
+    <div class="memory-grid">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-icon">🧠</span>
+          <h3>Pool Statistics</h3>
+        </div>
+        <div class="mem-stats">
+          <div class="mem-bar-wrap">
+            <div class="mem-bar-label">
+              <span>Used Slots</span>
+              <span id="usedPct">0%</span>
+            </div>
+            <div class="mem-bar"><div class="mem-bar-fill" id="memBarFill"></div></div>
+          </div>
+          <div class="mem-numbers">
+            <div class="mem-num"><span id="activeCount">0</span><label>Active Orders</label></div>
+            <div class="mem-num"><span id="freeCount">1,000,000</span><label>Free Slots</label></div>
+            <div class="mem-num"><span id="nextFreeIdx">0</span><label>Next Free Idx</label></div>
+          </div>
+        </div>
+        <div class="mem-freelist">
+          <div class="mem-subtitle">Free List Head Pointer</div>
+          <div class="freelist-visual" id="freelistViz"></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-icon">🔢</span>
+          <h3>Occupied Slots</h3>
+        </div>
+        <div class="slots-grid" id="slotsGrid"></div>
+        <div class="pool-info">
+          The physical indices shown are the actual array positions in the one-million-element arena that currently hold live orders. When an order is cancelled the slot returns to the free-list head and will be handed out first on the next allocation.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== NODES ===== -->
+<section class="section" id="nodes">
+  <div class="container">
+    <div class="section-header">
+      <h2>Node Data — Raw OrderNode Structs</h2>
+      <p>Every resting order is stored as an <code>OrderNode</code> in the pool arena. The <code>prev_idx</code> and <code>next_idx</code> fields form the doubly linked list that encodes time priority at each price level.</p>
+    </div>
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-icon">🔗</span>
+        <h3>Active Nodes (first 10)</h3>
+        <div class="panel-badge">LIVE</div>
+      </div>
+      <div class="node-table-wrap">
+        <table class="node-table" id="nodeTable">
+          <thead>
+            <tr>
+              <th>Slot</th>
+              <th>Order ID</th>
+              <th>Side</th>
+              <th>Price</th>
+              <th>Qty</th>
+              <th>Prev Slot</th>
+              <th>Next Slot</th>
+            </tr>
+          </thead>
+          <tbody id="nodeTableBody"></tbody>
+        </table>
+        <div class="node-empty" id="nodeEmpty">No active resting orders. Place an order above.</div>
+      </div>
+      <div id="chainViz" class="chain-viz"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== PHASES ===== -->
+<section class="section section-alt" id="phases">
+  <div class="container">
+    <div class="section-header">
+      <h2>Build Phases</h2>
+      <p>The engine was built incrementally. Each phase adds exactly one architectural layer on top of the previous one.</p>
+    </div>
+    <div class="phases-grid">
+      <a href="../docs/phase1_core_engine.md" class="phase-card">
+        <div class="phase-num">01</div>
+        <h3>In-Memory Core</h3>
+        <p>Price-time priority matching, doubly linked list price levels, the matching loop. Proven correct before any performance work.</p>
+        <div class="phase-tech">OrderNode · PriceLevel · std::map</div>
+        <span class="phase-link">Read Docs →</span>
+      </a>
+      <a href="../docs/phase2_memory_pool.md" class="phase-card">
+        <div class="phase-num">02</div>
+        <h3>Memory Pool</h3>
+        <p>Eliminated every OS heap allocation from the hot path. Pre-allocated one million slots with an O(1) free-list. Flat order directory replaces hash map.</p>
+        <div class="phase-tech">MemoryPool · Free-list · vector&lt;uint32_t&gt;</div>
+        <span class="phase-link">Read Docs →</span>
+      </a>
+      <a href="../docs/phase3_network_layer.md" class="phase-card">
+        <div class="phase-num">03</div>
+        <h3>Network Layer</h3>
+        <p>Single-threaded epoll event loop. 14-byte packed binary protocol. TCP_NODELAY and SIGPIPE handling. Zero locks anywhere.</p>
+        <div class="phase-tech">epoll · TCP_NODELAY · #pragma pack</div>
+        <span class="phase-link">Read Docs →</span>
+      </a>
+      <a href="../docs/phase4_telemetry.md" class="phase-card">
+        <div class="phase-num">04</div>
+        <h3>Hardware Isolation</h3>
+        <p>CPU affinity pinning keeps L1/L2 cache warm. Pre-allocated ring buffer captures nanosecond timestamps without any heap allocation.</p>
+        <div class="phase-tech">pthread_setaffinity · TelemetryBuffer · chrono</div>
+        <span class="phase-link">Read Docs →</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ===== FOOTER ===== -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-inner">
+      <div>
+        <div class="footer-brand">⚡ LOB Engine</div>
+        <p>Built by <a href="https://www.khanalnischal.com.np" target="_blank">Nischal Khanal</a></p>
+      </div>
+      <div class="footer-links">
+        <a href="https://github.com/Hunter-420/orderbook-matching-engine" target="_blank">GitHub</a>
+        <a href="../docs/phase1_core_engine.md">Docs</a>
+        <a href="../docs/questions_during_build.md">Questions</a>
+        <a href="../docs/learning_outcomes.md">Learning Outcomes</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script src="engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

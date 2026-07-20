@@ -20,8 +20,8 @@ matching-engine/
     phase4_telemetry.md          CPU affinity pinning, nanosecond telemetry buffer
     memory_layout.md             Memory and node visualizer internals with examples
     testing_and_simulation.md    All test tools with query protocol and examples
-    interview_prep.md            Interview questions and answers for this project
-    screenshots/                 Terminal screenshots for each tool (add yours here)
+    questions_during_build.md    Real questions I faced and solved during the build
+    learning_outcomes.md         What I learned about systems, networking, and performance
   data/
     input_orders.csv             Phase 1 and 2 test scenarios
   include/
@@ -173,6 +173,5 @@ Each document is written as a self-contained explanation with worked examples an
 | [Phase 4: Telemetry](docs/phase4_telemetry.md) | CPU affinity pinning, nanosecond timestamps, the ring buffer, percentile calculation |
 | [Memory Layout](docs/memory_layout.md) | How memory and node visualizers query the engine, free-list walk-through with a live example, linked-list pointer diagrams |
 | [Testing and Simulation](docs/testing_and_simulation.md) | All six test tools, the query protocol architecture, examples and expected output for each tool |
-| [Interview Prep](docs/interview_prep.md) | Every likely technical interview question about this project with clear answers you can say out loud |
-
-Screenshots of each tool running belong in [docs/screenshots/](docs/screenshots/). Add your own terminal screenshots there and they will be referenced automatically from the docs.
+| [Questions During Build](docs/questions_during_build.md) | Real technical questions I ran into, why I chose integer cents, why I used indices instead of pointers, and network configuration choices |
+| [Learning Outcomes](docs/learning_outcomes.md) | My reflections on systems programming, nanosecond performance, epoll networking, and zero-allocation architecture |

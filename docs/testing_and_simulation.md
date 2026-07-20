@@ -70,10 +70,6 @@ msg_type, oid, filled_qty, fill_price, status = struct.unpack(REQ_FMT, data)
 # status == b'A' means accepted, b'F' means filled
 ```
 
-![Client simulator test output](screenshots/client_simulator_output.png)
-
-*(Place a screenshot of the correctness test passing here)*
-
 ## Tool 2: Exchange Visualizer (`exchange_visualizer.py`)
 
 This script acts as an automated market maker. It continuously generates random buy and sell orders around a slowly drifting mid price. As the engine matches these orders and sends back fill reports, the script renders a scrolling real-time ticker tape showing every fill: which direction it was, how many shares, and at what price.
@@ -93,10 +89,6 @@ def receive_loop(s):
 ```
 
 This tool is meant purely for visual demonstration. It shows the engine handling a realistic stream of mixed orders.
-
-![Exchange visualizer ticker output](screenshots/exchange_visualizer_output.png)
-
-*(Place a screenshot of the scrolling ticker tape here)*
 
 ## Tool 3: Order Book Ladder (`orderbook_visualizer.py`)
 
@@ -139,10 +131,6 @@ BID QTY       PRICE          ASK QTY
  50           $100.00
 ```
 
-![Order book ladder terminal](screenshots/orderbook_visualizer_output.png)
-
-*(Place a screenshot of the live order book ladder here)*
-
 ## Tool 4: Memory Visualizer (`memory_visualizer.py`)
 
 This visualizer polls the engine with an `'M'` (memory) query every 500 milliseconds. The engine responds with a 49-byte `MemoryStateSnapshot` showing the internal state of the `MemoryPool`: how many orders are active, how many slots are free, where the free-list head pointer is pointing, and which physical slot indices currently contain live orders.
@@ -169,16 +157,14 @@ used_slots    = unpacked[3:13]
 
 **What you see on screen as you place orders:**
 
-Start with empty book: `Active: 0  Next free: 0`
-Place a buy order:     `Active: 1  Next free: 1  Slot [0] in use`
-Place another:         `Active: 2  Next free: 2  Slots [0] [1] in use`
-Cancel first order:    `Active: 1  Next free: 0  Slot [1] in use`  (slot 0 is back at top of free list)
+```
+Start with empty book: Active: 0  Next free: 0
+Place a buy order:     Active: 1  Next free: 1  Slot [0] in use
+Place another:         Active: 2  Next free: 2  Slots [0] [1] in use
+Cancel first order:    Active: 1  Next free: 0  Slot [1] in use  (slot 0 is back at top of free list)
+```
 
 This proves the zero-allocation architecture: the free-list head jumps back when an order is freed, and no OS memory calls ever happen.
-
-![Memory visualizer terminal](screenshots/memory_visualizer_output.png)
-
-*(Place a screenshot of the memory pool state display here)*
 
 ## Tool 5: Node Visualizer (`node_visualizer.py`)
 
@@ -224,10 +210,6 @@ for i in range(num_nodes):
 
 Slot 0 is the head of the $100.00 price level. Its `next_idx` is 1, meaning the node in pool slot 1 is queued behind it. Slot 1's `prev_idx` is 0, pointing back to slot 0. If Charlie now sends a buy for 150 shares at $100.00, the engine matches slot 0 (100 shares) first, then slot 1 (50 shares remaining after 50 are filled).
 
-![Node visualizer terminal](screenshots/node_visualizer_output.png)
-
-*(Place a screenshot of the live node data display here)*
-
 ## Tool 6: Manual Client (`manual_client.py`)
 
 An interactive command-line client for placing real orders into the live engine. A background thread reads execution reports and prints them above your prompt asynchronously so you can keep typing while fills arrive.
@@ -249,8 +231,4 @@ Sent SELL order 2: 60 @ $100.00
 Enter command >
 ```
 
-At the moment you see the FILL reports, the order book ladder shows Order 1 reduced from 100 to 40 shares, and the memory visualizer shows 1 slot freed (Order 2 was fully consumed).
-
-![Manual client terminal](screenshots/manual_client_output.png)
-
-*(Place a screenshot of the manual client session with fills here)*
+At the moment the FILL reports appear, the order book ladder shows Order 1 reduced from 100 to 40 shares, and the memory visualizer shows 1 slot freed (Order 2 was fully consumed).

@@ -6,27 +6,27 @@ Every time a traditional program creates an object with `new` in C++, it sends a
 
 This process is safe and convenient, but it has two serious problems for a matching engine. First, it is slow: a single `new` call can take anywhere from 50 nanoseconds to several hundred microseconds depending on how fragmented the heap is. Second, it is unpredictable: the same call might take 100 nanoseconds one time and 80,000 nanoseconds the next. Predictability matters more than raw speed for a trading engine. Unpredictable delays appear as tail latency spikes in the percentile table.
 
-The matching engine eliminates this problem entirely by pre-allocating all needed memory at startup and never calling the OS again during trading.
+I eliminate this problem entirely by pre-allocating all needed memory at startup and never calling the OS again during trading.
 
 ## How the MemoryPool Works
 
-At startup the engine creates one `MemoryPool` object. The pool allocates a flat array of exactly one million `OrderNode` slots in a single `new` call. That is the last time `new` is ever called. From that point on, when the engine needs memory for a new order, it takes a slot from this pre-allocated array. When the order is cancelled or fully filled, the slot is returned to the pool.
+At startup I create one `MemoryPool` object. The pool allocates a flat array of exactly one million `OrderNode` slots in a single `new` call. That is the last time `new` is ever called. From that point on, when the engine needs memory for a new order, it takes a slot from this pre-allocated array. When the order is cancelled or fully filled, the slot is returned to the pool.
 
-The pool uses a free-list to track which slots are available. A free-list is a stack of slot indices. At startup the stack contains `[0, 1, 2, ..., 999999]`. When an order arrives, the engine pops an index off the top of the stack and writes the order into that slot. When an order is freed, its index is pushed back onto the top of the stack.
+The pool uses a free-list to track which slots are available. A free-list is a stack of slot indices. At startup the stack contains `[0, 1, 2, ..., 999999]`. When an order arrives, I pop an index off the top of the stack and write the order into that slot. When an order is freed, its index is pushed back onto the top of the stack.
 
 Both operations — pop and push — are a single array access. They are O(1) and never touch the OS heap.
 
-## Walking Through a Live Example
+## A Live Example
 
 The pool starts with one million slots. The free-list stack top points to slot 0.
 
-A buy order arrives for 100 shares at $100.00. The engine pops slot 0 from the free-list. The free-list top now points to slot 1. The order's data is written into `pool_arena[0]`. The `order_directory_` vector records that order id 1 lives in slot 0.
+A buy order arrives for 100 shares at $100.00. I pop slot 0 from the free-list. The free-list top now points to slot 1. The order's data is written into `pool_arena[0]`. The `order_directory_` vector records that order id 1 lives in slot 0.
 
-Another buy order arrives for 50 shares at $100.00. The engine pops slot 1. The free-list top now points to slot 2. The data is written into `pool_arena[1]`. `order_directory_[2] = 1`.
+Another buy order arrives for 50 shares at $100.00. I pop slot 1. The free-list top now points to slot 2. The data is written into `pool_arena[1]`. `order_directory_[2] = 1`.
 
-A sell order arrives for 30 shares at $101.00. The engine pops slot 2. The free-list top now points to slot 3. No crossing occurs. The order rests in the ask map. `order_directory_[3] = 2`.
+A sell order arrives for 30 shares at $101.00. I pop slot 2. The free-list top now points to slot 3. No crossing occurs. The order rests in the ask map. `order_directory_[3] = 2`.
 
-A cancel request arrives for order id 1. The engine looks up `order_directory_[1]`, which says slot 0. It reads `pool_arena[0]` to get the order data, removes the order from the bid map's linked list, marks `order_directory_[1] = INVALID`, and pushes slot 0 back onto the free-list. The free-list top is now 0 again.
+A cancel request arrives for order id 1. I look up `order_directory_[1]`, which says slot 0. I read `pool_arena[0]` to get the order data, remove the order from the bid map's linked list, mark `order_directory_[1] = INVALID`, and push slot 0 back onto the free-list. The free-list top is now 0 again.
 
 At this moment the memory visualizer would show:
 
@@ -94,10 +94,6 @@ Slots Currently in Use:
   Slot Index: [1]
 ```
 
-![Memory visualizer terminal](screenshots/memory_visualizer_output.png)
-
-*(Place a screenshot of the memory pool state display here)*
-
 ## Node Visualizer: Seeing the Linked List in Memory
 
 The 289-byte `NodeSnapshot` carries the full raw struct data of up to 10 active `OrderNode` objects. Each entry is 28 bytes and contains every field of the C++ struct exactly as it sits in memory: slot index, order id, price in integer cents, remaining quantity, side, and the `prev_idx` and `next_idx` linked-list pointer fields.
@@ -153,7 +149,3 @@ After those fills you would see:
 ```
 
 Slot 0 is gone. Slot 1 is now the only order at that price, so both its `prev_idx` and `next_idx` are back to `NONE`.
-
-![Node visualizer terminal](screenshots/node_visualizer_output.png)
-
-*(Place a screenshot of the live node data display with linked list chains visible here)*

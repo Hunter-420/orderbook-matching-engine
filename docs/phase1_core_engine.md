@@ -2,7 +2,7 @@
 
 ## What This Phase Does
 
-Phase 1 builds the matching engine's brain. There is no networking, no performance tuning, and no database. The only goal is making the matching logic provably correct. We read orders from a CSV file, process them one by one, and print the state of the book after each event.
+Phase 1 builds the matching engine's brain. There is no networking, no performance tuning, and no database. The only goal is making the matching logic provably correct. I read orders from a CSV file, process them one by one, and print the state of the book after each event.
 
 Everything in the later phases rests on this foundation being right.
 
@@ -10,19 +10,19 @@ Everything in the later phases rests on this foundation being right.
 
 A limit order book has two sides. The bid side holds buyers who want to buy at or below a certain price. The ask side holds sellers who want to sell at or above a certain price. When a buyer's price is high enough to meet a seller's price, those two orders match and a trade happens.
 
-The order book enforces two rules simultaneously.
+I enforce two rules simultaneously.
 
 The first rule is price priority. A buyer willing to pay $102 gets filled before a buyer willing to pay $101 because the seller at $100 would rather deal with the more generous buyer. On the sell side, a seller asking $99 gets filled before a seller asking $100 because the buyer would rather pay less.
 
 The second rule is time priority. When two orders have the exact same price, the one that arrived earlier gets filled first. This is fair: the trader who committed to a price first should be rewarded.
 
-## A Concrete Walk-Through
+## A Concrete Example
 
-Imagine three events happen in this exact order:
+Three events happen in this exact order.
 
 **Event 1:** Alice places a sell order for 100 shares at $101.
 
-The engine checks the bid side. There are no buyers, so Alice's order rests on the ask side.
+I check the bid side. There are no buyers, so Alice's order rests on the ask side.
 
 ```
 ASK SIDE: $101 -> [Alice: 100 shares]
@@ -42,9 +42,9 @@ BID SIDE: (empty)
 
 Now prices cross. Charlie's price ($101) is equal to the best ask ($101) so matching begins.
 
-The engine always matches against the head of the price level queue. Alice is the head. The engine fills `min(120, 100) = 100` shares. Alice's order is fully consumed and removed. Charlie now has 20 shares remaining.
+I always match against the head of the price level queue. Alice is the head. I fill `min(120, 100) = 100` shares. Alice's order is fully consumed and removed. Charlie now has 20 shares remaining.
 
-The engine looks again. Bob is now the head at $101. The engine fills `min(20, 50) = 20` shares. Bob still has 30 shares left. Charlie is now fully filled.
+I look again. Bob is now the head at $101. I fill `min(20, 50) = 20` shares. Bob still has 30 shares left. Charlie is now fully filled.
 
 Final state of the book:
 
@@ -61,11 +61,11 @@ This is price-time priority working exactly as designed.
 
 ## How Time Priority Is Stored
 
-Notice that we never store timestamps on orders. Time priority is encoded structurally in the doubly linked list. The head of the list is always the oldest order. New orders always append to the tail. When the engine needs to match, it always reads the head. There is no sorting, no timestamp comparison, and no searching.
+I never store timestamps on orders. Time priority is encoded structurally in the doubly linked list. The head of the list is always the oldest order. New orders always append to the tail. When I need to match, I always read the head. There is no sorting, no timestamp comparison, and no searching.
 
 ## Code: The Data Structures
 
-Every live order is stored as an `OrderNode`. The price is kept as integer cents to avoid floating point rounding errors. The number `$100.01` cannot be represented exactly in binary floating point and becomes `100.00999...`, which would corrupt price comparisons. As an integer it is `10001`, which is always exact.
+I store every live order as an `OrderNode`. The price is kept as integer cents to avoid floating point rounding errors. The number `$100.01` cannot be represented exactly in binary floating point and becomes `100.00999...`, which would corrupt price comparisons. As an integer it is `10001`, which is always exact.
 
 ```cpp
 // include/types.hpp
@@ -91,7 +91,7 @@ struct PriceLevel {
 };
 ```
 
-The engine holds two ordered maps. The bid map sorts prices from highest to lowest so `bids_.begin()` is always the best bid. The ask map sorts lowest to highest so `asks_.begin()` is always the best ask.
+I hold two ordered maps. The bid map sorts prices from highest to lowest so `bids_.begin()` is always the best bid. The ask map sorts lowest to highest so `asks_.begin()` is always the best ask.
 
 ```cpp
 // include/engine.hpp
@@ -104,7 +104,7 @@ std::map<uint32_t, PriceLevel, std::less<uint32_t>> asks_;
 
 ## Code: The Matching Loop
 
-When an incoming order arrives, the engine checks whether its price crosses the best opposing price. If it does, it calculates a fill quantity, decrements both sides, records the fill, and then checks whether the resting order was fully consumed. If it was, the engine unlinks it from the price level chain and frees its slot. Then the loop repeats with whatever quantity remains on the incoming order.
+When an incoming order arrives, I check whether its price crosses the best opposing price. If it does, I calculate a fill quantity, decrement both sides, record the fill, and then check whether the resting order was fully consumed. If it was, I unlink it from the price level chain and free its slot. Then the loop repeats with whatever quantity remains on the incoming order.
 
 ```cpp
 // src/engine.cpp — inside the match() function
@@ -133,8 +133,4 @@ if (resting.quantity == 0) {
 
 ## Terminal Output
 
-When you run the Phase 1 test you will see the book printed after each event. This lets you verify by eye that Alice is filling before Bob and that Bob's remaining quantity is correct.
-
-![Phase 1 terminal output](screenshots/phase1_output.png)
-
-*(Place a screenshot of your Phase 1 test output here)*
+Running the Phase 1 test prints the book after each event, which lets you verify by eye that Alice fills before Bob and that Bob's remaining quantity is correct.

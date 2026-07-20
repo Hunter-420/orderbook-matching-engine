@@ -2,7 +2,7 @@
 
 ## What This Phase Does
 
-Phase 4 deals with two problems that only appear when you run the engine on real hardware under real load. The first problem is latency jitter: the engine can sometimes take 10x longer to process an order than usual, not because the matching logic is slow, but because the operating system interrupted the process and moved it to a different CPU core. The second problem is measurement: we want to know exactly how fast the engine is, measured in nanoseconds, without the act of measurement itself slowing anything down.
+Phase 4 deals with two problems that only appear when you run the engine on real hardware under real load. The first problem is latency jitter: the engine can sometimes take 10x longer to process an order than usual, not because the matching logic is slow, but because the operating system interrupted the process and moved it to a different CPU core. The second problem is measurement: I want to know exactly how fast the engine is, measured in nanoseconds, without the act of measurement itself slowing anything down.
 
 Phase 4 solves both.
 
@@ -14,7 +14,7 @@ Every CPU core has its own L1 and L2 cache, which are small ultra-fast memory ba
 
 When the scheduler moves the engine to Core 3, Core 3's cache has no idea what the order book looks like. Every memory access must go all the way to main RAM, which takes 60 to 100 nanoseconds per read. For the duration of that migration, every order the engine processes takes tens of thousands of nanoseconds instead of a few hundred. This appears in the latency data as extreme tail spikes.
 
-The solution is CPU affinity pinning. We tell the Linux kernel that this specific thread must always run on Core 1 and only Core 1. The kernel respects this instruction. The cache stays warm forever.
+The solution is CPU affinity pinning. I tell the Linux kernel that this specific thread must always run on Core 1 and only Core 1. The kernel respects this instruction. The cache stays warm forever.
 
 ```cpp
 // src/main.cpp
@@ -34,21 +34,21 @@ pin_to_core(1);  // Always run on CPU core 1
 
 ## Problem 2: Measuring Nanosecond Latency Without Disrupting It
 
-To understand the engine's performance we want to record the latency of every single order: the time from when the order bytes arrived to when the execution report bytes were sent back. That sounds simple, but the naive approach destroys the measurement.
+To understand the engine's performance I record the latency of every single order: the time from when the order bytes arrived to when the execution report bytes were sent back. That sounds simple, but the naive approach destroys the measurement.
 
 If you call `std::cout` to print the latency after each order, `std::cout` flushes a buffer, which can involve a system call, which can take 10,000 nanoseconds. You would be measuring the cost of printing, not the cost of matching.
 
-The solution is to never print during trading. Instead we maintain a pre-allocated ring buffer called `TelemetryBuffer` that holds up to one million nanosecond samples. Writing a sample is a single array assignment and an index increment. No system call, no allocation, no lock. It takes under one nanosecond.
+The solution is to never print during trading. Instead I maintain a pre-allocated ring buffer called `TelemetryBuffer` that holds up to one million nanosecond samples. Writing a sample is a single array assignment and an index increment. No system call, no allocation, no lock. It takes under one nanosecond.
 
-When the user presses Ctrl+C to shut down the engine, we then sort the buffer and compute percentiles. The engine is already stopped at that point so we can take as long as we want.
+When the user presses Ctrl+C to shut down the engine, I sort the buffer and compute percentiles. The engine is already stopped at that point so I can take as long as I want.
 
-## A Concrete Walk-Through
+## How Measurement Works in Practice
 
 The engine starts and pins itself to Core 1. The telemetry buffer is pre-allocated with space for one million samples.
 
-Order 1 arrives. The engine immediately captures a start timestamp using `high_resolution_clock::now()`. It runs the matching logic, sends the execution report, then captures an end timestamp. The difference is 2,500 nanoseconds. It writes `2500` into `TelemetryBuffer[0]` and increments the index to 1.
+Order 1 arrives. I immediately capture a start timestamp using `high_resolution_clock::now()`. I run the matching logic, send the execution report, then capture an end timestamp. The difference is 2,500 nanoseconds. I write `2500` into `TelemetryBuffer[0]` and increment the index to 1.
 
-Order 2 arrives. Same process, difference is 3,100 nanoseconds. Writes `3100` into `TelemetryBuffer[1]`. Index becomes 2.
+Order 2 arrives. Same process, difference is 3,100 nanoseconds. I write `3100` into `TelemetryBuffer[1]`. Index becomes 2.
 
 This continues for 1,000 orders. The user presses Ctrl+C.
 
@@ -91,7 +91,7 @@ The `samples_` array is a member of the class. It is allocated when the `Telemet
 
 ## Code: Nanosecond Timestamps in the Event Loop
 
-The timestamps are captured as tightly as possible around the actual work to exclude waiting time.
+I capture timestamps as tightly as possible around the actual work to exclude waiting time.
 
 ```cpp
 // src/main.cpp — inside the epoll loop, after bytes arrive
@@ -123,7 +123,7 @@ if (bytes == sizeof(OrderRequest)) {
 }
 ```
 
-Notice that query packets (`'O'`, `'M'`, `'D'`) use `continue` and skip the telemetry recording entirely. Visualizer queries do not appear in the latency measurements. Only real trading operations are measured.
+Query packets (`'O'`, `'M'`, `'D'`) use `continue` and skip the telemetry recording entirely. Visualizer queries do not appear in the latency measurements. Only real trading operations are measured.
 
 ## Code: Percentile Calculation at Shutdown
 
@@ -148,8 +148,4 @@ std::cout << "Max:   " << sorted_samples.back() << " ns\n";
 
 ## Reading the Output
 
-When you run the load test with `python3 tests/client_simulator.py --load` and then send Ctrl+C to the engine, you will see a percentile table printed. The numbers to pay attention to are p50 (the typical order) and the gap between p99 and p99.9 (which reveals whether extreme outliers exist, usually caused by the OS scheduler).
-
-![Phase 4 latency percentile output](screenshots/phase4_output.png)
-
-*(Place a screenshot of your latency percentile output after running the load test here)*
+Run the load test with `python3 tests/client_simulator.py --load` and then send Ctrl+C to the engine. A percentile table will print. The numbers to pay attention to are p50 (the typical order) and the gap between p99 and p99.9 (which reveals whether extreme outliers exist, usually caused by the OS scheduler).

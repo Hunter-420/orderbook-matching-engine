@@ -2,7 +2,7 @@
 
 ## What This Phase Does
 
-Phase 2 makes the engine fast in a very specific way. We eliminate every operating system memory allocation from the critical trading path. When Phase 1 creates a new order it calls `new OrderNode()`, which asks the OS for memory. When Phase 1 cancels an order it calls `delete`, which returns memory to the OS. Both of those operations are slow and unpredictable. Phase 2 removes them completely.
+Phase 2 makes the engine fast in a very specific way. I eliminate every operating system memory allocation from the critical trading path. When Phase 1 creates a new order it calls `new OrderNode()`, which asks the OS for memory. When Phase 1 cancels an order it calls `delete`, which returns memory to the OS. Both of those operations are slow and unpredictable. Phase 2 removes them completely.
 
 The matching logic and public interface stay exactly the same. The only change is how memory for `OrderNode` objects is managed.
 
@@ -14,21 +14,21 @@ More importantly, it is unpredictable. The same `new` call might take 80 nanosec
 
 ## The Solution: Pre-Allocate Everything at Startup
 
-Instead of asking the OS for memory every time an order arrives, we ask the OS for a large block of memory exactly once at startup, before trading begins. We allocate one million `OrderNode` slots in a contiguous array. From that point on, every order allocation takes an index from this array. No OS involvement, no searching, no locking.
+Instead of asking the OS for memory every time an order arrives, I ask the OS for a large block of memory exactly once at startup, before trading begins. I allocate one million `OrderNode` slots in a contiguous array. From that point on, every order allocation takes an index from this array. No OS involvement, no searching, no locking.
 
-We track which slots are free using a free-list stack. At startup the stack contains indices `[0, 1, 2, ..., 999999]`. When we need a slot, we pop the top of the stack. When we free a slot, we push it back.
+I track which slots are free using a free-list stack. At startup the stack contains indices `[0, 1, 2, ..., 999999]`. When I need a slot, I pop the top of the stack. When I free a slot, I push it back.
 
-## A Concrete Walk-Through
+## How the Free List Moves
 
 Imagine the pool starts with 5 slots. The free-list stack looks like this from top to bottom: `[0, 1, 2, 3, 4]`.
 
-**Order A arrives.** We pop `0` from the stack. We write Order A's data into `pool[0]`. Stack is now `[1, 2, 3, 4]`.
+**Order A arrives.** I pop `0` from the stack. I write Order A's data into `pool[0]`. Stack is now `[1, 2, 3, 4]`.
 
-**Order B arrives.** We pop `1`. We write Order B into `pool[1]`. Stack is now `[2, 3, 4]`.
+**Order B arrives.** I pop `1`. I write Order B into `pool[1]`. Stack is now `[2, 3, 4]`.
 
-**Order A is cancelled.** We push `0` back onto the stack. Stack is now `[0, 2, 3, 4]`. Notice slot 0 is back at the top and will be the next slot handed out. This is cache-friendly: that slot's memory is still warm in CPU cache from when Order A was written into it.
+**Order A is cancelled.** I push `0` back onto the stack. Stack is now `[0, 2, 3, 4]`. Slot 0 is back at the top and will be the next slot handed out. This is cache-friendly: that slot's memory is still warm in CPU cache from when Order A was written into it.
 
-**Order C arrives.** We pop `0` again. We write Order C into `pool[0]`. Stack is `[2, 3, 4]`.
+**Order C arrives.** I pop `0` again. I write Order C into `pool[0]`. Stack is `[2, 3, 4]`.
 
 Every one of these operations is a single array access. No OS calls, no searching, no locking.
 
@@ -36,13 +36,13 @@ Every one of these operations is a single array access. No OS calls, no searchin
 
 Phase 1 used a `std::unordered_map<uint32_t, OrderNode*>` to look up orders by their ID when processing a cancel request. A hash map involves hashing the key, locating a bucket, and potentially walking a chain of collisions. In the worst case this is O(n). Even in the average case it involves pointer chasing that misses the CPU cache.
 
-Phase 2 replaces this with a flat `std::vector<uint32_t>` of size one million, indexed directly by `order_id`. Looking up slot index for order 42000 is now a single array access: `order_directory_[42000]`. The CPU computes the memory address as a simple multiply-and-add. No hashing, no pointer following, no cache misses.
+Phase 2 replaces this with a flat `std::vector<uint32_t>` of size one million, indexed directly by `order_id`. Looking up the slot index for order 42000 is now a single array access: `order_directory_[42000]`. The CPU computes the memory address as a simple multiply-and-add. No hashing, no pointer following, no cache misses.
 
 The value stored is the pool slot index. If the order is live, the slot index is valid. If the order was cancelled or filled, the entry holds `INVALID` (the value `UINT32_MAX`, which is never a valid slot index because the pool only has one million slots).
 
 ## Code: The Memory Pool
 
-The pool is initialized by chaining every slot's `next_idx` to the next slot. This turns the pre-allocated array itself into the free-list. No extra memory is needed.
+I initialize the pool by chaining every slot's `next_idx` to the next slot. This turns the pre-allocated array itself into the free-list. No extra memory is needed.
 
 ```cpp
 // src/memory_pool.cpp
@@ -96,7 +96,3 @@ OrderNode& node = pool_->get(slot);          // One more array access
 ## Terminal Output
 
 The memory pool test verifies that after the engine starts and processes orders, zero additional heap allocations occur. Running `strace` on the process confirms that `brk` and `mmap` system calls (which the OS uses for heap allocation) do not appear during trading.
-
-![Phase 2 memory pool verification](screenshots/phase2_output.png)
-
-*(Place a screenshot of your memory pool test or strace output here)*

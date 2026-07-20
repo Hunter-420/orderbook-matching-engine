@@ -14,23 +14,23 @@ The network layer in this engine avoids both problems completely.
 
 ## The Solution: One Thread, epoll, Binary Protocol
 
-Instead of one thread per client, the engine uses a single thread and asks the Linux kernel to tell it exactly which sockets have data ready to read at any moment. This is what `epoll` does.
+Instead of one thread per client, I use a single thread and ask the Linux kernel to report exactly which sockets have data ready to read at any moment. This is what `epoll` does.
 
-The engine calls `epoll_wait`. This call blocks until at least one socket has incoming data. When it returns, it hands back a list of file descriptors that are ready. The engine processes each one sequentially: read 14 bytes, route to the matching logic, send the execution report back. Then call `epoll_wait` again.
+I call `epoll_wait`. This call blocks until at least one socket has incoming data. When it returns, it hands back a list of file descriptors that are ready. I process each one sequentially: read 14 bytes, route to the matching logic, send the execution report back. Then call `epoll_wait` again.
 
 Because everything happens on one thread, the order book is never accessed by two operations simultaneously. No mutex is needed at any point.
 
-For the message format, every packet is a fixed-width binary struct. The engine knows every message is exactly 14 bytes. There is no scanning, no parsing, and no allocation. Reading a message is a single `recv()` call followed by a `memcpy` into a struct.
+For the message format, every packet is a fixed-width binary struct. I know every message is exactly 14 bytes. There is no scanning, no parsing, and no allocation. Reading a message is a single `recv()` call followed by a `memcpy` into a struct.
 
-## A Concrete Walk-Through
+## Two Clients, One Core
 
 Imagine two clients connect and each sends a 14-byte order.
 
 `epoll_wait` wakes and returns two ready file descriptors.
 
-The engine reads 14 bytes from Client A's socket. It copies those bytes into an `OrderRequest` struct. Since the struct fields are laid out exactly as the bytes arrived, reading the `price` field is a direct memory access with no conversion needed. The engine calls `new_order()` with those values and sends back a 14-byte `ExecutionReport` with status `'A'` for accepted.
+I read 14 bytes from Client A's socket. I copy those bytes into an `OrderRequest` struct. Since the struct fields are laid out exactly as the bytes arrived, reading the `price` field is a direct memory access with no conversion needed. I call `new_order()` with those values and send back a 14-byte `ExecutionReport` with status `'A'` for accepted.
 
-The engine then reads 14 bytes from Client B's socket and does the same. If Client B's order crosses Client A's price, the engine generates a fill and sends `ExecutionReport` with status `'F'` to both sockets.
+I then read 14 bytes from Client B's socket and do the same. If Client B's order crosses Client A's price, I generate a fill and send `ExecutionReport` with status `'F'` to both sockets.
 
 Everything runs sequentially on one core. There is no parallelism and no synchronisation.
 
@@ -96,13 +96,13 @@ void set_nodelay(int fd) {
 }
 ```
 
-This is called on every socket as soon as it is accepted, including the listening socket.
+I call this on every socket as soon as it is accepted, including the listening socket.
 
 ## Why SIGPIPE Is Ignored
 
-When a client disconnects unexpectedly and the engine calls `send()` to write to that now-dead socket, the OS sends a `SIGPIPE` signal to the process. The default handler for `SIGPIPE` terminates the process immediately. One disconnected client would kill the entire exchange.
+When a client disconnects unexpectedly and I call `send()` to write to that now-dead socket, the OS sends a `SIGPIPE` signal to the process. The default handler for `SIGPIPE` terminates the process immediately. One disconnected client would kill the entire exchange.
 
-Setting `SIGPIPE` to `SIG_IGN` makes `send()` return `-1` instead of crashing the process. The engine sees the error return value, closes the file descriptor, and continues serving the remaining clients.
+Setting `SIGPIPE` to `SIG_IGN` makes `send()` return `-1` instead of crashing the process. I see the error return value, close the file descriptor, and continue serving the remaining clients.
 
 ```cpp
 // src/main.cpp — at the top of main(), before anything else
@@ -147,8 +147,4 @@ for (int i = 0; i < n; ++i) {
 
 ## Terminal Output
 
-When the engine starts you see it announce the port it is listening on. Each client connection and disconnection is logged to stdout. The engine terminal shows the server side view while the client terminals show the execution reports.
-
-![Phase 3 engine and client terminal](screenshots/phase3_output.png)
-
-*(Place a screenshot of your engine terminal alongside a client terminal showing accepted orders and fills here)*
+When the engine starts it announces the port it is listening on. Each client connection and disconnection is logged to stdout. The engine terminal shows the server-side view while the client terminals show the execution reports.
