@@ -90,6 +90,8 @@ def receive_loop(s):
 
 This tool is meant purely for visual demonstration. It shows the engine handling a realistic stream of mixed orders.
 
+![Matching engine and exchange visualizer running](screenshots/matching_engine_bin.png)
+
 ## Tool 3: Order Book Ladder (`orderbook_visualizer.py`)
 
 This is a live order book ladder that reflects the true global state of the engine. It works by polling the engine with an `'O'` (orderbook) query packet every 200 milliseconds. The engine responds with a 169-byte `OrderbookSnapshot` containing the top ten bid price levels and top ten ask price levels, each with their aggregated total quantity.
@@ -131,6 +133,8 @@ BID QTY       PRICE          ASK QTY
  50           $100.00
 ```
 
+![Order book ladder terminal](screenshots/orderbook_visualizer.png)
+
 ## Tool 4: Memory Visualizer (`memory_visualizer.py`)
 
 This visualizer polls the engine with an `'M'` (memory) query every 500 milliseconds. The engine responds with a 49-byte `MemoryStateSnapshot` showing the internal state of the `MemoryPool`: how many orders are active, how many slots are free, where the free-list head pointer is pointing, and which physical slot indices currently contain live orders.
@@ -165,6 +169,8 @@ Cancel first order:    Active: 1  Next free: 0  Slot [1] in use  (slot 0 is back
 ```
 
 This proves the zero-allocation architecture: the free-list head jumps back when an order is freed, and no OS memory calls ever happen.
+
+![Memory visualizer terminal](screenshots/memory_visualizer.png)
 
 ## Tool 5: Node Visualizer (`node_visualizer.py`)
 
@@ -210,6 +216,8 @@ for i in range(num_nodes):
 
 Slot 0 is the head of the $100.00 price level. Its `next_idx` is 1, meaning the node in pool slot 1 is queued behind it. Slot 1's `prev_idx` is 0, pointing back to slot 0. If Charlie now sends a buy for 150 shares at $100.00, the engine matches slot 0 (100 shares) first, then slot 1 (50 shares remaining after 50 are filled).
 
+![Node visualizer terminal](screenshots/node_visualizer.png)
+
 ## Tool 6: Manual Client (`manual_client.py`)
 
 An interactive command-line client for placing real orders into the live engine. A background thread reads execution reports and prints them above your prompt asynchronously so you can keep typing while fills arrive.
@@ -232,3 +240,5 @@ Enter command >
 ```
 
 At the moment the FILL reports appear, the order book ladder shows Order 1 reduced from 100 to 40 shares, and the memory visualizer shows 1 slot freed (Order 2 was fully consumed).
+
+![Manual client terminal](screenshots/manual_client.png)

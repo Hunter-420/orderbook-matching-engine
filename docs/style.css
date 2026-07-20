@@ -455,6 +455,7 @@ a:hover {
   font-weight: 500;
 }
 .slot-box.used { background: var(--bg-panel); border: 2px solid var(--primary); color: var(--primary); font-weight: 700; }
+.slot-box small { font-size: 0.65rem; color: var(--text-dim); font-weight: 400; line-height: 1; }
 .pool-info { font-size: 0.85rem; color: var(--text-dim); line-height: 1.6; }
 
 /* Nodes */

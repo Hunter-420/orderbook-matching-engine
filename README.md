@@ -4,6 +4,8 @@ A high-performance C++ matching engine built in four phases. Each phase adds one
 
 Project URL: [Single-Threaded Limit Order Book Matching Engine in C++](https://www.khanalnischal.com.np/projects/single-threaded-limit-order-book-matching-engine-in-c)
 
+Live Demo & Documentation Site: [hunter-420.github.io/orderbook-matching-engine](https://hunter-420.github.io/orderbook-matching-engine/)
+
 The engine enforces price-time priority: among all resting orders at a price level, the order that arrived first is always matched first. Every design decision traces back to one goal — eliminate every unnecessary instruction on the path from incoming bytes to execution report.
 
 ---
@@ -70,25 +72,35 @@ The engine is a single-process server. All visualizers connect to it as clients 
 ./matching_engine_bin
 ```
 
+![Engine terminal](docs/screenshots/matching_engine_bin.png)
+
 **Terminal 2:** Live order book ladder (all orders from all clients)
 ```bash
 python3 tests/orderbook_visualizer.py
 ```
+
+![Order book ladder](docs/screenshots/orderbook_visualizer.png)
 
 **Terminal 3:** MemoryPool state (free-list head, active slot count)
 ```bash
 python3 tests/memory_visualizer.py
 ```
 
+![Memory visualizer](docs/screenshots/memory_visualizer.png)
+
 **Terminal 4:** Raw OrderNode structs (every field including linked-list pointers)
 ```bash
 python3 tests/node_visualizer.py
 ```
 
+![Node visualizer](docs/screenshots/node_visualizer.png)
+
 **Terminal 5:** Place orders manually and watch all visualizers update in real time
 ```bash
 python3 tests/manual_client.py
 ```
+
+![Manual client](docs/screenshots/manual_client.png)
 
 ---
 

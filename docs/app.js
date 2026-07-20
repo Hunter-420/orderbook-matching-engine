@@ -232,29 +232,32 @@ function renderMemory() {
     document.getElementById('usedPct').innerText = pct.toFixed(2) + '%';
     document.getElementById('memBarFill').style.width = pct + '%';
     
-    // Free list visualization
+    // Free list visualization — walk the free list chain
     const flViz = document.getElementById('freelistViz');
     flViz.innerHTML = '';
-    let curr = snap.nextFreeIdx;
+    let curr = snap.nextFree;
     for (let i = 0; i < 8; i++) {
-        if (curr === null || curr === undefined) break;
+        if (curr === null || curr === undefined || curr === -1) break;
         const cl = i === 0 ? 'freelist-box head' : 'freelist-box';
         flViz.innerHTML += `<div class="${cl}">${curr}</div>`;
-        curr = engine.pool.arena[curr].next; // peek into next
+        const nextInChain = engine.pool.arena[curr] ? engine.pool.arena[curr].next : -1;
+        if (nextInChain === curr) break; // safety: avoid infinite loop
+        curr = nextInChain;
     }
     flViz.innerHTML += `<div class="freelist-box" style="border:none;background:transparent;">...</div>`;
     
     // Physical slots grid (first 40 slots)
+    // A slot is "used" when its .id field has been set to a real order id (>0)
+    // and the engine's orderDir still references it.
+    const usedSlots = new Set(snap.usedSlots);
     const grid = document.getElementById('slotsGrid');
     grid.innerHTML = '';
     for (let i = 0; i < 40; i++) {
-        let isUsed = false;
-        // In this JS version, slot contains orderId if used, otherwise null/undefined (for free list pointer)
-        if (engine.pool.arena[i].orderId !== undefined && engine.pool.arena[i].orderId !== null) {
-            isUsed = true;
-        }
+        const isUsed = usedSlots.has(i);
+        const node = engine.pool.arena[i];
+        const label = isUsed ? `[${i}]<br><small>#${node.id}</small>` : `[${i}]`;
         const cl = isUsed ? 'slot-box used' : 'slot-box';
-        grid.innerHTML += `<div class="${cl}">[${i}]</div>`;
+        grid.innerHTML += `<div class="${cl}">${label}</div>`;
     }
 }
 
