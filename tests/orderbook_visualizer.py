@@ -14,13 +14,22 @@ RED = '\033[91m'
 RESET = '\033[0m'
 CYAN = '\033[96m'
 
+def recvall(sock, n):
+    data = bytearray()
+    while len(data) < n:
+        packet = sock.recv(n - len(data))
+        if not packet:
+            return None
+        data.extend(packet)
+    return bytes(data)
+
 def fetch_and_render(s):
     # Send snapshot request
     req = struct.pack(REQ_FMT, b'O', 0, 0, 0, b'B')
     s.sendall(req)
     
-    data = s.recv(169)
-    if len(data) != 169:
+    data = recvall(s, 169)
+    if data is None:
         return
         
     unpacked = struct.unpack(SNAPSHOT_FMT, data)

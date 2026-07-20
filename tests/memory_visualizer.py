@@ -14,12 +14,21 @@ GREEN = '\033[92m'
 YELLOW = '\033[93m'
 RESET = '\033[0m'
 
+def recvall(sock, n):
+    data = bytearray()
+    while len(data) < n:
+        packet = sock.recv(n - len(data))
+        if not packet:
+            return None
+        data.extend(packet)
+    return bytes(data)
+
 def fetch_and_render(s):
     req = struct.pack(REQ_FMT, b'M', 0, 0, 0, b'B')
     s.sendall(req)
     
-    data = s.recv(49)
-    if len(data) != 49:
+    data = recvall(s, 49)
+    if data is None:
         return
         
     unpacked = struct.unpack(MEM_FMT, data)
