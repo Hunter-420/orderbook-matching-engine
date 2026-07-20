@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Limit Order Book Engine — Live Demo</title>
+  <meta name="description" content="Interactive browser demo of a single-threaded C++ limit order book matching engine. Visualize price-time priority matching, memory pool allocation, and linked-list node data in real time." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+  <!-- marked.js for in-browser markdown rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+
+<!-- ===== NAV ===== -->
+<nav class="nav">
+  <div class="nav-inner">
+    <div class="nav-brand" onclick="switchTab('demo')" style="cursor: pointer;">
+      <svg class="brand-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m13 2-2 2.5h3L11 22l2-2.5h-3L13 2Z"/></svg>
+      <span class="brand-name">LOB Engine</span>
+    </div>
+    <div class="nav-links">
+      <a href="#" onclick="switchTab('demo'); return false;">Interactive Demo</a>
+      <a href="#" onclick="switchTab('docs'); return false;">Documentation</a>
+      <a href="https://github.com/Hunter-420/orderbook-matching-engine" target="_blank" class="nav-btn">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ===== DEMO VIEW ===== -->
+<div id="view-demo" class="view-active">
+  <!-- ===== HERO ===== -->
+  <section class="hero">
+    <div class="hero-bg"></div>
+    <div class="hero-content">
+      <div class="hero-badge">Single-Threaded · C++17 · Linux epoll</div>
+      <h1>Limit Order Book<br /><span class="gradient-text">Matching Engine</span></h1>
+      <p class="hero-sub">
+        A production-grade matching engine built in four phases — from a correct in-memory core
+        to a hardware-pinned, nanosecond-latency networked exchange. 
+      </p>
+      
+      <div class="disclaimer-alert">
+        <strong>Note:</strong> The interactive widgets below are a pure JavaScript simulation of the engine for demonstration purposes. To experience the true nanosecond performance and zero-allocation architecture, you must clone the codebase and compile the C++ server locally.
+      </div>
+
+      <div class="hero-stats">
+        <div class="stat"><span class="stat-num">&lt;3μs</span><span class="stat-label">Median Latency</span></div>
+        <div class="stat"><span class="stat-num">1M</span><span class="stat-label">Pre-allocated Slots</span></div>
+        <div class="stat"><span class="stat-num">14B</span><span class="stat-label">Wire Protocol</span></div>
+        <div class="stat"><span class="stat-num">0</span><span class="stat-label">Heap Allocs on Hot Path</span></div>
+      </div>
+      <div class="hero-cta">
+        <a href="#demo-grid" class="btn-primary">Try Simulation</a>
+        <a href="#" onclick="switchTab('docs'); return false;" class="btn-ghost">Read the Docs</a>
+      </div>
+    </div>
+    <div class="hero-visual">
+      <div class="ticker-preview" id="heroTicker"></div>
+    </div>
+  </section>
+
+  <!-- ===== DEMO ===== -->
+  <section class="section" id="demo-grid">
+    <div class="container">
+      <div class="section-header">
+        <h2>Interactive Demo</h2>
+        <p>This is a faithful JavaScript implementation of the C++ matching engine running in your browser. Price-time priority, partial fills, cancellations — all exact.</p>
+      </div>
+
+      <div class="demo-grid">
+        <!-- Order Entry -->
+        <div class="panel" id="order-entry">
+          <div class="panel-header">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="panel-icon"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            <h3>Place Order</h3>
+          </div>
+          <div class="order-form">
+            <div class="side-toggle">
+              <button class="side-btn active" id="buyBtn" onclick="setSide('B')">BUY</button>
+              <button class="side-btn" id="sellBtn" onclick="setSide('S')">SELL</button>
+            </div>
+            <div class="form-row">
+              <label>Price ($)</label>
+              <input type="number" id="priceInput" value="100.00" step="0.25" min="0.01" />
+            </div>
+            <div class="form-row">
+              <label>Quantity</label>
+              <input type="number" id="qtyInput" value="100" step="10" min="1" />
+            </div>
+            <button class="submit-btn" onclick="placeOrder()">Submit Order</button>
+            <button class="cancel-all-btn" onclick="cancelAll()">Cancel All Resting</button>
+          </div>
+
+          <div class="panel-header" style="margin-top:24px">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="panel-icon"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            <h3>Auto Simulation</h3>
+          </div>
+          <div class="sim-controls">
+            <button class="sim-btn" id="simBtn" onclick="toggleSim()">▶ Start Market Sim</button>
+            <div class="form-row">
+              <label>Speed (ms)</label>
+              <input type="range" id="speedInput" min="100" max="2000" value="600" oninput="updateSpeed(this.value)" />
+              <span id="speedLabel">600ms</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Order Book Ladder -->
+        <div class="panel" id="book-panel">
+          <div class="panel-header">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="panel-icon"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+            <h3>Order Book Ladder</h3>
+            <div class="panel-badge">LIVE</div>
+          </div>
+          <div class="book-container">
+            <div class="book-header-row">
+              <span>BID QTY</span>
+              <span>PRICE</span>
+              <span>ASK QTY</span>
+            </div>
+            <div id="bookLadder" class="book-ladder"></div>
+          </div>
+          <div class="spread-info" id="spreadInfo">Spread: —</div>
+        </div>
+
+        <!-- Execution Tape -->
+        <div class="panel" id="tape-panel">
+          <div class="panel-header">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="panel-icon"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            <h3>Execution Tape</h3>
+          </div>
+          <div id="execTape" class="exec-tape"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== MEMORY ===== -->
+  <section class="section section-alt" id="memory">
+    <div class="container">
+      <div class="section-header">
+        <h2>Memory Pool State</h2>
+        <p>The engine pre-allocates one million <code>OrderNode</code> slots at startup. Every order allocation and deallocation is an O(1) array index operation — no OS heap calls on the hot path.</p>
+      </div>
+      <div class="memory-grid">
+        <div class="panel">
+          <div class="panel-header">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="panel-icon"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+            <h3>Pool Statistics</h3>
+          </div>
+          <div class="mem-stats">
+            <div class="mem-bar-wrap">
+              <div class="mem-bar-label">
+                <span>Used Slots</span>
+                <span id="usedPct">0%</span>
+              </div>
+              <div class="mem-bar"><div class="mem-bar-fill" id="memBarFill"></div></div>
+            </div>
+            <div class="mem-numbers">
+              <div class="mem-num"><span id="activeCount">0</span><label>Active Orders</label></div>
+              <div class="mem-num"><span id="freeCount">1,000,000</span><label>Free Slots</label></div>
+              <div class="mem-num"><span id="nextFreeIdx">0</span><label>Next Free Idx</label></div>
+            </div>
+          </div>
+          <div class="mem-freelist">
+            <div class="mem-subtitle">Free List Head Pointer</div>
+            <div class="freelist-visual" id="freelistViz"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="panel-icon"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+            <h3>Occupied Slots</h3>
+          </div>
+          <div class="slots-grid" id="slotsGrid"></div>
+          <div class="pool-info">
+            The physical indices shown are the actual array positions in the one-million-element arena that currently hold live orders. When an order is cancelled the slot returns to the free-list head and will be handed out first on the next allocation.
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== NODES ===== -->
+  <section class="section" id="nodes">
+    <div class="container">
+      <div class="section-header">
+        <h2>Node Data — Raw OrderNode Structs</h2>
+        <p>Every resting order is stored as an <code>OrderNode</code> in the pool arena. The <code>prev_idx</code> and <code>next_idx</code> fields form the doubly linked list that encodes time priority at each price level.</p>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="panel-icon"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          <h3>Active Nodes (first 10)</h3>
+          <div class="panel-badge">LIVE</div>
+        </div>
+        <div class="node-table-wrap">
+          <table class="node-table" id="nodeTable">
+            <thead>
+              <tr>
+                <th>Slot</th>
+                <th>Order ID</th>
+                <th>Side</th>
+                <th>Price</th>
+                <th>Qty</th>
+                <th>Prev Slot</th>
+                <th>Next Slot</th>
+              </tr>
+            </thead>
+            <tbody id="nodeTableBody"></tbody>
+          </table>
+          <div class="node-empty" id="nodeEmpty">No active resting orders. Place an order above.</div>
+        </div>
+        <div id="chainViz" class="chain-viz"></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- ===== DOCS VIEW ===== -->
+<div id="view-docs" class="view-hidden">
+  <div class="docs-container">
+    <aside class="docs-sidebar">
+      <h3>Documentation</h3>
+      <ul class="docs-nav">
+        <li><a href="#doc-phase1_core_engine" onclick="loadDoc('phase1_core_engine.md')">Phase 1: Core Engine</a></li>
+        <li><a href="#doc-phase2_memory_pool" onclick="loadDoc('phase2_memory_pool.md')">Phase 2: Memory Pool</a></li>
+        <li><a href="#doc-phase3_network_layer" onclick="loadDoc('phase3_network_layer.md')">Phase 3: Network Layer</a></li>
+        <li><a href="#doc-phase4_telemetry" onclick="loadDoc('phase4_telemetry.md')">Phase 4: Telemetry</a></li>
+        <li><a href="#doc-memory_layout" onclick="loadDoc('memory_layout.md')">Memory Layout</a></li>
+        <li><a href="#doc-testing_and_simulation" onclick="loadDoc('testing_and_simulation.md')">Testing & Simulation</a></li>
+        <li><a href="#doc-questions_during_build" onclick="loadDoc('questions_during_build.md')">Questions During Build</a></li>
+        <li><a href="#doc-learning_outcomes" onclick="loadDoc('learning_outcomes.md')">Learning Outcomes</a></li>
+      </ul>
+    </aside>
+    <main class="docs-content">
+      <div id="markdown-container" class="markdown-body">
+        <!-- Markdown content will be rendered here -->
+        <div class="loading-state">Select a document from the sidebar to start reading.</div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ===== FOOTER ===== -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-inner">
+      <div>
+        <div class="footer-brand">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:text-bottom; margin-right:4px;"><path d="m13 2-2 2.5h3L11 22l2-2.5h-3L13 2Z"/></svg>
+          LOB Engine
+        </div>
+        <p>Built by <a href="https://www.khanalnischal.com.np" target="_blank">Nischal Khanal</a></p>
+      </div>
+      <div class="footer-links">
+        <a href="https://github.com/Hunter-420/orderbook-matching-engine" target="_blank">GitHub Repository</a>
+        <a href="#" onclick="switchTab('docs'); loadDoc('learning_outcomes.md'); return false;">Learning Outcomes</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script src="engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
