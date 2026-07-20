@@ -145,6 +145,54 @@ for (int i = 0; i < n; ++i) {
 }
 ```
 
+## Why These Specific C++ and Linux API Choices
+
+**`epoll_wait` instead of `select` or `poll`**
+
+`select` and `poll` are the older Linux APIs for monitoring multiple file descriptors. Both have a fundamental problem: every call requires passing in the entire list of sockets to watch. If I have 500 connected clients, `select` and `poll` must scan all 500 on every single wakeup, even if only one has data. The cost scales as O(N) with the number of connections.
+
+`epoll_wait` works differently. I register each socket with `epoll_ctl` once. After that, `epoll_wait` only returns the file descriptors that are actually ready. If 500 clients are connected but only 2 have sent data, `epoll_wait` returns an array of 2 entries. The work is O(ready events), not O(total connections). This is what lets the engine scale to thousands of connections on one thread.
+
+```cpp
+// poll() — O(N) scan every wakeup: must pass all fds every time
+int ready = poll(fds, nfds, timeout);  // nfds checked every time
+
+// epoll — O(ready): only the ready fds come back
+int n = epoll_wait(epfd, events, MAX_EVENTS, 100);
+for (int i = 0; i < n; ++i) {
+    int fd = events[i].data.fd;  // Only ready fds, no scanning
+    // process fd
+}
+```
+
+**`recv()` for socket reads**
+
+`recv(fd, buf, sizeof(buf), 0)` reads bytes from the socket into a local buffer. I check the return value: a return of `0` means the client disconnected cleanly, a return of `-1` means an error (I check `errno` and handle `EAGAIN` for non-blocking reads), and a return equal to `sizeof(OrderRequest)` means a complete packet arrived. I only process the message when all 14 bytes are present, avoiding any partial-read logic.
+
+**`std::memcpy` instead of a cast**
+
+After `recv` fills `buf`, I do `std::memcpy(&req, buf, sizeof(OrderRequest))` rather than casting: `OrderRequest* req = (OrderRequest*)buf`. A direct cast would be technically undefined behaviour in C++ if `buf` is not properly aligned. `memcpy` is always safe and modern compilers optimise it to a sequence of load instructions that is identical in generated code to a direct copy.
+
+```cpp
+char buf[sizeof(OrderRequest)];
+recv(fd, buf, sizeof(buf), 0);
+
+// Safe: memcpy handles alignment
+OrderRequest req;
+std::memcpy(&req, buf, sizeof(OrderRequest));
+
+// Unsafe cast (undefined behaviour if buf is misaligned):
+// OrderRequest* req = reinterpret_cast<OrderRequest*>(buf);
+```
+
+**`send()` and checking its return value**
+
+`send(fd, &report, sizeof(report), 0)` writes the 14-byte execution report to the client's TCP socket. With `TCP_NODELAY` set, the kernel sends it immediately. I check the return value: if `send` returns `-1` with `errno == EPIPE`, the client has disconnected. Because I set `SIGPIPE` to `SIG_IGN` earlier, I get the error return instead of a process-killing signal, and I close and remove that file descriptor from epoll.
+
+**`epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev)`**
+
+When a new client connects, I call `accept()` to get their file descriptor and then immediately call `epoll_ctl` with `EPOLL_CTL_ADD` to register it with my epoll instance. From that point on, the kernel will include that file descriptor in future `epoll_wait` results whenever the client sends data. I never have to manually track which clients are active.
+
 ## Terminal Output
 
 When the engine starts it announces the port it is listening on. Each client connection and disconnection is logged to stdout. The engine terminal shows the server-side view while the client terminals show the execution reports.

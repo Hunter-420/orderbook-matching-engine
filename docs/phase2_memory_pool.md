@@ -93,6 +93,30 @@ if (slot == INVALID) return;                 // Already gone
 OrderNode& node = pool_->get(slot);          // One more array access
 ```
 
+## Why These Specific C++ Choices
+
+**`std::vector<uint32_t>` for the order directory instead of `std::unordered_map`**
+
+Phase 1 used `std::unordered_map<uint32_t, OrderNode*>` to find an order by ID during cancellations. A hash map call involves: computing the hash of the key, finding the bucket, and then walking a linked chain of entries if there are collisions. Even at average O(1), this involves pointer chasing that is guaranteed to cause a CPU cache miss because the hash bucket might live anywhere in memory.
+
+I replaced this with a flat `std::vector<uint32_t>` of size one million, where the index is the `order_id`. Looking up slot for order 42000 is `order_directory_[42000]`, which the CPU computes as a base pointer plus a fixed offset. That is a single memory read and it is almost always a cache hit because the vector is contiguous memory.
+
+```cpp
+// Old approach (Phase 1): cache-unfriendly pointer chasing
+OrderNode* node = order_map.at(order_id);  // Hash + bucket lookup + possible collision chain
+
+// New approach (Phase 2): one array offset computation, cache-friendly
+uint32_t slot = order_directory_[order_id]; // base_address + (order_id * sizeof(uint32_t))
+```
+
+**`order_directory_.resize(MAX_ORDER_ID, INVALID)`**
+
+`resize` allocates the entire vector in one contiguous allocation and fills every element with `INVALID` (which is `UINT32_MAX`, the value `4294967295`). I chose `UINT32_MAX` as the sentinel because the pool only has one million slots, so `UINT32_MAX` can never be a valid slot index. This makes checking `if (slot == INVALID)` a completely safe and unambiguous guard.
+
+**Why `MemoryPool::arena_` uses `std::vector` internally**
+
+The pool's arena is `std::vector<OrderNode>` of capacity one million. I use `reserve()` in the constructor so the vector allocates its entire backing memory in a single `new` call. After that, `arena_[i]` is a direct array subscript — no heap allocation, no indirection. This is identical in performance to a raw `OrderNode arena[1000000]` C-style array but with the added safety that `std::vector` carries its own size and will not silently overflow.
+
 ## Terminal Output
 
 The memory pool test verifies that after the engine starts and processes orders, zero additional heap allocations occur. Running `strace` on the process confirms that `brk` and `mmap` system calls (which the OS uses for heap allocation) do not appear during trading.

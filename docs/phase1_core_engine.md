@@ -131,6 +131,41 @@ if (resting.quantity == 0) {
 }
 ```
 
+## Why These Specific C++ Choices
+
+**`std::map` with `std::greater<uint32_t>` for the bid book**
+
+`std::map` is a Red-Black tree. It keeps every key sorted at all times. I use `std::greater` as the comparator so the map sorts prices from highest to lowest. This means `bids_.begin()` always points to the best (highest) bid in O(1) — no searching required.
+
+The alternative, `std::unordered_map`, is a hash table. Hash tables have O(1) average lookup by a specific key, but they have no concept of ordering. To find the maximum price in an unordered_map I would need to scan every element, which is O(N). In a hot matching loop that runs thousands of times per second, O(N) would be fatal.
+
+`std::map` insertion and deletion are O(log N) rather than O(1), but since price levels are far fewer than individual orders, this is the correct trade-off.
+
+```cpp
+// bids_.begin() is always the highest price. No searching, no scanning.
+auto best_bid_it = bids_.begin();
+uint32_t best_price = best_bid_it->first;
+PriceLevel& level = best_bid_it->second;
+```
+
+**`std::min` in the matching loop**
+
+`std::min(incoming.quantity, resting.quantity)` calculates how many shares the current match can consume. I cannot fill more than either side has. Using `std::min` makes the partial fill logic a single expression with no branching.
+
+```cpp
+// If incoming wants 120 shares and resting has 100, fill = 100.
+// Both orders update: resting goes to 0 (removed), incoming drops to 20.
+uint32_t fill = std::min(incoming.quantity, resting.quantity);
+```
+
+**`pending_fills_.push_back()`**
+
+I collect all fills into a `std::vector<Fill>` during the matching loop rather than sending them to clients immediately. This separates the matching logic (which must be fast and deterministic) from the I/O logic (which involves system calls). After the matching loop completes, the event loop in `main.cpp` calls `engine.take_fills()` to drain the vector and sends the execution reports over TCP.
+
+**`asks_.erase(best_it)` vs advancing `head_idx`**
+
+When the last order at a price level is consumed I erase the entire price level entry from the map. If there are more orders at that price I only advance `head_idx` to the next node. Erasing avoids keeping empty price levels in the tree, which would slow down `begin()` traversal over time.
+
 ## Terminal Output
 
 Running the Phase 1 test prints the book after each event, which lets you verify by eye that Alice fills before Bob and that Bob's remaining quantity is correct.
