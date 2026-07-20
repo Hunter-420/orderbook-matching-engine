@@ -27,7 +27,11 @@ matching-engine/
     engine.cpp                   Matching logic and book management
     memory_pool.cpp              Pre-allocated pool implementation
   tests/
-    client_simulator.py          TCP test client (supports correctness and load testing)
+    client_simulator.py          TCP test client for correctness and load testing
+    exchange_visualizer.py       Real-time ticker tape simulation
+    orderbook_visualizer.py      Live rendering of the limit order book ladder
+    manual_client.py             Interactive CLI for placing manual orders
+    *(See [docs/testing_and_simulation.md](docs/testing_and_simulation.md) for details on all test clients)*
 ```
 
 ---
