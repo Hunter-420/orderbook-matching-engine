@@ -312,12 +312,42 @@ void Engine::get_memory_snapshot(MemoryStateSnapshot& snapshot) const {
     snapshot.next_free_idx = pool_->get_next_free();
     
     uint32_t active = 0;
-    for (uint32_t id : order_directory_) {
-        if (id != INVALID) {
-            if (active < 10) {
-                snapshot.top_used_slots[active] = id;
+    uint32_t slot_count = 0;
+    for (uint32_t order_id = 0; order_id < MAX_ORDER_ID; ++order_id) {
+        uint32_t slot = order_directory_[order_id];
+        if (slot != INVALID) {
+            if (slot_count < 10) {
+                snapshot.top_used_slots[slot_count] = slot;
+                slot_count++;
             }
             active++;
+        }
+    }
+    snapshot.total_active = active;
+}
+
+void Engine::get_node_snapshot(NodeSnapshot& snapshot) const {
+    snapshot.type = 'D';
+    snapshot.num_nodes = 0;
+
+    uint32_t active = 0;
+    for (uint32_t order_id = 0; order_id < MAX_ORDER_ID; ++order_id) {
+        uint32_t slot = order_directory_[order_id];
+        if (slot == INVALID) continue;
+
+        active++;
+        if (snapshot.num_nodes < 10) {
+            const OrderNode& node = pool_->get(slot);
+            NodeData& nd = snapshot.nodes[snapshot.num_nodes];
+            nd.slot_index = slot;
+            nd.order_id   = node.order_id;
+            nd.price      = node.price;
+            nd.quantity   = node.quantity;
+            nd.side       = node.side;
+            nd._pad[0] = nd._pad[1] = nd._pad[2] = 0;
+            nd.next_idx   = node.next_idx;
+            nd.prev_idx   = node.prev_idx;
+            snapshot.num_nodes++;
         }
     }
     snapshot.total_active = active;

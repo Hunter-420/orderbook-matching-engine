@@ -9,8 +9,14 @@
 // Endianness is assumed to be little-endian (native x86_64).
 
 // Client -> Server message
+// Supported type values:
+//   'N' = New limit order
+//   'C' = Cancel order
+//   'O' = Query: full orderbook snapshot
+//   'M' = Query: memory pool state snapshot
+//   'D' = Query: raw node data snapshot (active OrderNodes)
 struct OrderRequest {
-    char     type;       // 'N' = New, 'C' = Cancel
+    char     type;       // See above
     uint32_t order_id;   // 4 bytes
     uint32_t price;      // 4 bytes (integer cents)
     uint32_t quantity;   // 4 bytes
@@ -45,6 +51,27 @@ struct MemoryStateSnapshot {
     uint32_t next_free_idx;
     uint32_t total_active;
     uint32_t top_used_slots[10]; // First 10 slots to show physically used memory
+};
+
+// One serialised OrderNode for the node visualizer.
+// Mirrors the in-memory OrderNode struct exactly so the Python client
+// can unpack and display every field without any interpretation.
+struct NodeData {
+    uint32_t slot_index; // Physical pool slot this node occupies
+    uint32_t order_id;
+    uint32_t price;      // Integer cents
+    uint32_t quantity;
+    char     side;       // 'B' or 'S'
+    char     _pad[3];
+    uint32_t next_idx;   // Pool slot of next node at same price level, UINT32_MAX = none
+    uint32_t prev_idx;   // Pool slot of prev node at same price level, UINT32_MAX = none
+};
+
+struct NodeSnapshot {
+    char     type;          // 'D'
+    uint32_t total_active;  // Total live orders in engine
+    uint32_t num_nodes;     // Number of NodeData entries in this packet (max 10)
+    NodeData nodes[10];
 };
 
 #pragma pack(pop)

@@ -30,8 +30,9 @@ matching-engine/
   tests/
     client_simulator.py          TCP test client for correctness and load testing
     exchange_visualizer.py       Real-time ticker tape simulation
-    orderbook_visualizer.py      Live rendering of the limit order book ladder
-    memory_visualizer.py         Live rendering of the engine's internal C++ memory pointers
+    orderbook_visualizer.py      Live limit order book ladder (queries engine directly)
+    memory_visualizer.py         Live view of the MemoryPool free-list and active slots
+    node_visualizer.py           Live view of every active OrderNode struct in the pool
     manual_client.py             Interactive CLI for placing manual orders
     *(See [docs/testing_and_simulation.md](docs/testing_and_simulation.md) and [docs/memory_layout.md](docs/memory_layout.md) for details)*
 ```
@@ -51,6 +52,37 @@ make clean
 ```
 
 Removes the compiled binary.
+
+---
+
+## Running the Visualizers
+
+The engine is a single-process server. All visualizers connect to it as clients and poll for binary snapshots of its internal state. Start the engine once and then run each visualizer in its own terminal.
+
+**Terminal 1:** Start the engine
+```bash
+./matching_engine_bin
+```
+
+**Terminal 2:** Live order book ladder (all orders from all clients)
+```bash
+python3 tests/orderbook_visualizer.py
+```
+
+**Terminal 3:** MemoryPool state (free-list head, active slot count)
+```bash
+python3 tests/memory_visualizer.py
+```
+
+**Terminal 4:** Raw OrderNode structs (every field including linked-list pointers)
+```bash
+python3 tests/node_visualizer.py
+```
+
+**Terminal 5:** Place orders manually and watch all visualizers update in real time
+```bash
+python3 tests/manual_client.py
+```
 
 ---
 

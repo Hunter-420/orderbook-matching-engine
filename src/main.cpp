@@ -171,6 +171,12 @@ int main() {
                         engine.get_memory_snapshot(snap);
                         send(fd, &snap, sizeof(snap), 0);
                         continue;
+                    } else if (req.type == 'D') {
+                        NodeSnapshot snap;
+                        std::memset(&snap, 0, sizeof(snap));
+                        engine.get_node_snapshot(snap);
+                        send(fd, &snap, sizeof(snap), 0);
+                        continue;
                     }
 
                     auto fills = engine.take_fills();

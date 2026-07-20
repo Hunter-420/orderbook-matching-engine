@@ -48,6 +48,7 @@ public:
     // Snapshot methods for visualization
     void get_orderbook_snapshot(OrderbookSnapshot& snapshot) const;
     void get_memory_snapshot(MemoryStateSnapshot& snapshot) const;
+    void get_node_snapshot(NodeSnapshot& snapshot) const;
 
     // Print both sides of the book to stdout for debugging and validation.
     void print_book() const;
