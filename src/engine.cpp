@@ -288,3 +288,37 @@ void Engine::print_book() const {
 
     std::cout << "==================\n";
 }
+
+void Engine::get_orderbook_snapshot(OrderbookSnapshot& snapshot) const {
+    snapshot.type = 'O';
+    snapshot.num_bids = 0;
+    snapshot.num_asks = 0;
+    
+    for (auto it = bids_.begin(); it != bids_.end() && snapshot.num_bids < 10; ++it) {
+        snapshot.bids[snapshot.num_bids].price = it->first;
+        snapshot.bids[snapshot.num_bids].quantity = it->second.total_volume;
+        snapshot.num_bids++;
+    }
+    
+    for (auto it = asks_.begin(); it != asks_.end() && snapshot.num_asks < 10; ++it) {
+        snapshot.asks[snapshot.num_asks].price = it->first;
+        snapshot.asks[snapshot.num_asks].quantity = it->second.total_volume;
+        snapshot.num_asks++;
+    }
+}
+
+void Engine::get_memory_snapshot(MemoryStateSnapshot& snapshot) const {
+    snapshot.type = 'M';
+    snapshot.next_free_idx = pool_->get_next_free();
+    
+    uint32_t active = 0;
+    for (uint32_t id : order_directory_) {
+        if (id != INVALID) {
+            if (active < 10) {
+                snapshot.top_used_slots[active] = id;
+            }
+            active++;
+        }
+    }
+    snapshot.total_active = active;
+}

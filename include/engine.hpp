@@ -1,6 +1,7 @@
 #pragma once
 
 #include "types.hpp"
+#include "protocol.hpp"
 
 #include <cstdint>
 #include <map>
@@ -43,6 +44,10 @@ public:
 
     // Return and clear all fills generated since the last call.
     std::vector<Fill> take_fills();
+
+    // Snapshot methods for visualization
+    void get_orderbook_snapshot(OrderbookSnapshot& snapshot) const;
+    void get_memory_snapshot(MemoryStateSnapshot& snapshot) const;
 
     // Print both sides of the book to stdout for debugging and validation.
     void print_book() const;

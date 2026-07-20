@@ -26,6 +26,27 @@ struct ExecutionReport {
     char     status;     // 'F' = Full fill, 'P' = Partial fill, 'C' = Cancelled, 'A' = Accepted
 };
 
+// Snapshot structs for visualizers
+struct LevelData {
+    uint32_t price;
+    uint32_t quantity;
+};
+
+struct OrderbookSnapshot {
+    char      type;      // 'O'
+    uint32_t  num_bids;
+    uint32_t  num_asks;
+    LevelData bids[10];
+    LevelData asks[10];
+};
+
+struct MemoryStateSnapshot {
+    char     type;       // 'M'
+    uint32_t next_free_idx;
+    uint32_t total_active;
+    uint32_t top_used_slots[10]; // First 10 slots to show physically used memory
+};
+
 #pragma pack(pop)
 
 static_assert(sizeof(OrderRequest) == 14, "OrderRequest must be exactly 14 bytes");

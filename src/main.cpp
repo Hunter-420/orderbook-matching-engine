@@ -159,6 +159,18 @@ int main() {
                         engine.cancel_order(req.order_id);
                         ExecutionReport ack{'E', req.order_id, 0, 0, 'C'};
                         send(fd, &ack, sizeof(ack), 0);
+                    } else if (req.type == 'O') {
+                        OrderbookSnapshot snap;
+                        std::memset(&snap, 0, sizeof(snap));
+                        engine.get_orderbook_snapshot(snap);
+                        send(fd, &snap, sizeof(snap), 0);
+                        continue;
+                    } else if (req.type == 'M') {
+                        MemoryStateSnapshot snap;
+                        std::memset(&snap, 0, sizeof(snap));
+                        engine.get_memory_snapshot(snap);
+                        send(fd, &snap, sizeof(snap), 0);
+                        continue;
                     }
 
                     auto fills = engine.take_fills();

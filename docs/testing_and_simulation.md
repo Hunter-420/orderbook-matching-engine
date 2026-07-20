@@ -48,27 +48,27 @@ def receive_loop(s):
 
 ## 3. Live Order Book Ladder (`orderbook_visualizer.py`)
 
-Because the matching engine is designed for ultra-low latency, it *does not* broadcast its internal state. It only broadcasts executions. 
-To build an order book ladder, this script maintains its own local copy of the market. It tracks every order it submits. When it receives a fill, it reduces the quantity. When it receives a cancel, it deletes the order. It then aggregates the remaining orders by price and renders an interactive, live-updating ladder.
+Because the matching engine is designed for ultra-low latency, it *does not* broadcast market data to every client on every tick (which would clog the network). Instead, we extended the binary protocol with an **Orderbook Snapshot Query** (`type = 'O'`).
+
+This script continuously polls the engine with this 14-byte query. The engine instantly responds with a 169-byte binary snapshot containing the top 10 bids and top 10 asks directly from its internal memory. The script then unpacks this true global state and renders a live-updating ladder.
 
 ### Logic & Code Snippet
 ```python
-# Maintain a local state of all live orders
-live_orders = {
-    # order_id: {'side': b'B', 'price': 10100, 'qty': 100}
-}
+# Send a snapshot request
+req = struct.pack(REQ_FMT, b'O', 0, 0, 0, b'B')
+s.sendall(req)
 
-# When an execution report arrives:
-if status == 'F': # Fill
-    live_orders[order_id]['qty'] -= filled_qty
-    if live_orders[order_id]['qty'] <= 0:
-        del live_orders[order_id] # Order fully filled, remove from book
+# Receive 169 bytes (1 byte type + 2 ints + 40 ints for 20 price levels)
+data = s.recv(169)
+unpacked = struct.unpack('<cII40I', data)
+num_bids = unpacked[1]
+num_asks = unpacked[2]
 
-# Rendering the ladder by aggregating quantities at each price level
-bids = {}
-for order in live_orders.values():
-    if order['side'] == b'B':
-        bids[order['price']] = bids.get(order['price'], 0) + order['qty']
+# The script iterates over the unpacked integers to build the ladder
+for i in range(num_bids):
+    price = unpacked[3 + i*2]
+    qty = unpacked[4 + i*2]
+    # Render Bid...
 ```
 
 ## 4. Manual Trading Client (`manual_client.py`)

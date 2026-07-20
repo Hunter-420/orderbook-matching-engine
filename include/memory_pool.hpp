@@ -45,6 +45,8 @@ public:
     // Direct slot access by index. Used by the engine to read and write
     // OrderNode fields after alloc() reserves the slot.
     OrderNode& get(uint32_t slot);
+    
+    uint32_t get_next_free() const { return next_free_; }
     const OrderNode& get(uint32_t slot) const;
 
 private:

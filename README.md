@@ -14,6 +14,7 @@ The engine enforces price-time priority: among all resting orders at a price lev
 matching-engine/
   Makefile                       build configuration
   docs/                          Detailed documentation and code snippets per phase
+    memory_layout.md             Documentation on the zero-allocation architecture
   data/
     input_orders.csv             Phase 1 and 2 test scenarios
   include/
@@ -30,8 +31,9 @@ matching-engine/
     client_simulator.py          TCP test client for correctness and load testing
     exchange_visualizer.py       Real-time ticker tape simulation
     orderbook_visualizer.py      Live rendering of the limit order book ladder
+    memory_visualizer.py         Live rendering of the engine's internal C++ memory pointers
     manual_client.py             Interactive CLI for placing manual orders
-    *(See [docs/testing_and_simulation.md](docs/testing_and_simulation.md) for details on all test clients)*
+    *(See [docs/testing_and_simulation.md](docs/testing_and_simulation.md) and [docs/memory_layout.md](docs/memory_layout.md) for details)*
 ```
 
 ---
