@@ -112,52 +112,78 @@ For deep technical details and code snippets, please see the `docs/` directory. 
 **What it does:** Implements correct price-time priority matching with no networking and no performance tuning. It proves the matching logic (handling partial fills, cancellations, and order book states) is perfectly correct.
 **Detailed Docs:** [docs/phase1_core_engine.md](docs/phase1_core_engine.md)
 
-**Sample Output (Processing a new order):**
+**How to generate this output:**
+Start the engine, then run the manual client and place an order:
+```bash
+python3 tests/manual_client.py
+Enter command > sell 100 101.00
+```
+
+**Real Output (Manual Client & Order Book):**
+The manual client prints:
 ```text
---- Event: id=1 NEW SELL qty=100 price=101 ---
-=== ORDER BOOK ===
-  ASKS (lowest first):
-    $101: [ord=1 qty=100]  (total=100)
-  BIDS (highest first):
-==================
+Sent SELL order 1: 100 @ $101.00
+[SYSTEM] Order 1 Accepted
+```
+Simultaneously, `python3 tests/orderbook_visualizer.py` will update to show:
+```text
+BID QTY       PRICE          ASK QTY
+              $101.00            100
+------------ spread ------------
 ```
 
 ### Phase 2: Memory Pool Optimization
 **What it does:** Eliminates OS memory allocation (`new`/`delete`) on the critical path. It introduces a pre-allocated flat `MemoryPool` of one million slots and a flat `vector` order directory for `O(1)` order cancellation lookups.
 **Detailed Docs:** [docs/phase2_memory_pool.md](docs/phase2_memory_pool.md)
 
-**Sample Output (Validating no allocations):**
-Using `strace`, the output proves that after startup, zero heap allocation calls are made during trading:
+**How to generate this output:**
+Start the engine, then run the memory visualizer to watch the internal free-list pointer shift in real time as orders are placed and filled.
+```bash
+python3 tests/memory_visualizer.py
+```
+
+**Real Output (Memory Visualizer):**
 ```text
-% time     seconds  usecs/call     calls    errors syscall
------- ----------- ----------- --------- --------- ----------------
-  0.00    0.000000           0         0           brk
-  0.00    0.000000           0         0           mmap
-  0.00    0.000000           0         0           munmap
------- ----------- ----------- --------- --------- ----------------
+[MEMORY STATE]
+Active Orders: 3
+Free Slots:    999997
+Next Free Idx: 3
+
+Occupied Physical Slots (first 10):
+Slot 0 | Slot 1 | Slot 2
 ```
 
 ### Phase 3: Network Layer
 **What it does:** Brings the engine online using a non-blocking `epoll` architecture and a zero-copy fixed-width binary wire protocol. It disables Nagle's algorithm with `TCP_NODELAY` to prevent latency spikes.
 **Detailed Docs:** [docs/phase3_network_layer.md](docs/phase3_network_layer.md)
 
-**Sample Output (Python Client interaction):**
+**How to generate this output:**
+Start the engine, then run the exchange visualizer which streams thousands of automated TCP binary orders.
+```bash
+python3 tests/exchange_visualizer.py
+```
+
+**Real Output (Exchange Visualizer processing binary network reports):**
 ```text
-Engine listening on port 9000
-Client connected: fd 13
---- Submitting Sell 100 @ $101.00 ---
-Report -> type:E, order_id:1, filled_qty:0, fill_price:0, status:A
---- Submitting Buy 100 @ $101.00 ---
-Report -> type:E, order_id:2, filled_qty:0, fill_price:0, status:A
-Report -> type:E, order_id:2, filled_qty:100, fill_price:101.0, status:F
-Report -> type:E, order_id:1, filled_qty:100, fill_price:101.0, status:F
+[EXCHANGE VISUALIZER] Connected to matching engine on port 9000
+...
+FILL  order 43  10 shares at $100.12
+FILL  order 44  20 shares at $100.12
+FILL  order 47  50 shares at $100.18
+FILL  order 49  10 shares at $100.18
 ```
 
 ### Phase 4: Hardware Isolation and Latency Measurement
 **What it does:** Achieves deterministic latency by pinning the process to a specific CPU core (`pthread_setaffinity_np`) to avoid L1/L2 cache invalidations. Measures performance in the nanosecond range using a pre-allocated `TelemetryBuffer`.
 **Detailed Docs:** [docs/phase4_telemetry.md](docs/phase4_telemetry.md)
 
-**Sample Output (Latency Percentiles after 1000 orders):**
+**How to generate this output:**
+Start the engine, run the high-load client simulator to blast 1,000 orders into the engine, then press `Ctrl+C` on the engine terminal to safely shut it down and trigger the telemetry dump.
+```bash
+python3 tests/client_simulator.py --load
+```
+
+**Real Output (Engine Terminal on shutdown):**
 ```text
 === LATENCY PERCENTILES (ns) ===
 Samples: 1000

@@ -78,6 +78,14 @@ function cancelAll() {
     updateAllVisualizers();
 }
 
+function cancelById() {
+    const id = parseInt(document.getElementById('cancelIdInput').value, 10);
+    if (isNaN(id) || id <= 0) return;
+    engine.cancelOrder(id);
+    updateAllVisualizers();
+    document.getElementById('cancelIdInput').value = '';
+}
+
 function toggleSim() {
     const btn = document.getElementById('simBtn');
     if (simInterval) {

@@ -91,6 +91,14 @@
             </div>
             <button class="submit-btn" onclick="placeOrder()">Submit Order</button>
             <button class="cancel-all-btn" onclick="cancelAll()">Cancel All Resting</button>
+            
+            <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border);">
+              <label style="font-size: 0.85rem; color: var(--text-dim); margin-bottom: 8px; display: block;">Cancel Specific Order</label>
+              <div style="display: flex; gap: 8px;">
+                <input type="number" id="cancelIdInput" placeholder="Order ID" min="1" style="flex: 1;" />
+                <button class="btn-ghost" style="padding: 0 16px; font-size: 0.85rem;" onclick="cancelById()">Cancel</button>
+              </div>
+            </div>
           </div>
 
           <div class="panel-header" style="margin-top:24px">
