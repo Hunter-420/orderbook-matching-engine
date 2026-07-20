@@ -13,28 +13,34 @@ The engine enforces price-time priority: among all resting orders at a price lev
 ```
 matching-engine/
   Makefile                       build configuration
-  docs/                          Detailed documentation and code snippets per phase
-    memory_layout.md             Documentation on the zero-allocation architecture
+  docs/
+    phase1_core_engine.md        Matching logic, price-time priority, data structures
+    phase2_memory_pool.md        Zero-allocation pool, free-list, flat order directory
+    phase3_network_layer.md      epoll event loop, binary protocol, TCP_NODELAY
+    phase4_telemetry.md          CPU affinity pinning, nanosecond telemetry buffer
+    memory_layout.md             Memory and node visualizer internals with examples
+    testing_and_simulation.md    All test tools with query protocol and examples
+    interview_prep.md            Interview questions and answers for this project
+    screenshots/                 Terminal screenshots for each tool (add yours here)
   data/
     input_orders.csv             Phase 1 and 2 test scenarios
   include/
     types.hpp                    Shared types (OrderNode, PriceLevel, Fill)
     engine.hpp                   Engine class
     memory_pool.hpp              Pre-allocated MemoryPool class
-    protocol.hpp                 Wire structs OrderRequest, ExecutionReport
+    protocol.hpp                 Wire structs and snapshot structs
     telemetry.hpp                TelemetryBuffer for latency sampling
   src/
-    main.cpp                     Entry point, evolves across all four phases
-    engine.cpp                   Matching logic and book management
+    main.cpp                     Entry point and epoll event loop
+    engine.cpp                   Matching logic, book management, snapshot methods
     memory_pool.cpp              Pre-allocated pool implementation
   tests/
-    client_simulator.py          TCP test client for correctness and load testing
-    exchange_visualizer.py       Real-time ticker tape simulation
-    orderbook_visualizer.py      Live limit order book ladder (queries engine directly)
-    memory_visualizer.py         Live view of the MemoryPool free-list and active slots
-    node_visualizer.py           Live view of every active OrderNode struct in the pool
-    manual_client.py             Interactive CLI for placing manual orders
-    *(See [docs/testing_and_simulation.md](docs/testing_and_simulation.md) and [docs/memory_layout.md](docs/memory_layout.md) for details)*
+    client_simulator.py          Correctness and load testing
+    exchange_visualizer.py       Automated real-time ticker tape
+    orderbook_visualizer.py      Live order book ladder queried from engine
+    memory_visualizer.py         Live MemoryPool free-list and slot state
+    node_visualizer.py           Live raw OrderNode struct data with linked-list pointers
+    manual_client.py             Interactive CLI for placing orders manually
 ```
 
 ---
@@ -152,3 +158,21 @@ p99.99:  84334 ns
 Max:     84334 ns
 ================================
 ```
+
+---
+
+## Documentation
+
+Each document is written as a self-contained explanation with worked examples and code snippets. You do not need to read them in order, but reading them in phase order builds the full picture progressively.
+
+| Document | What It Covers |
+|---|---|
+| [Phase 1: Core Engine](docs/phase1_core_engine.md) | Price-time priority matching, OrderNode, PriceLevel, the matching loop with a full Alice-Bob-Charlie walk-through |
+| [Phase 2: Memory Pool](docs/phase2_memory_pool.md) | Why `new`/`delete` are eliminated, the free-list pop and push, the flat order directory, cache-line packing |
+| [Phase 3: Network Layer](docs/phase3_network_layer.md) | Single-threaded epoll, 14-byte binary protocol, TCP_NODELAY, SIGPIPE handling |
+| [Phase 4: Telemetry](docs/phase4_telemetry.md) | CPU affinity pinning, nanosecond timestamps, the ring buffer, percentile calculation |
+| [Memory Layout](docs/memory_layout.md) | How memory and node visualizers query the engine, free-list walk-through with a live example, linked-list pointer diagrams |
+| [Testing and Simulation](docs/testing_and_simulation.md) | All six test tools, the query protocol architecture, examples and expected output for each tool |
+| [Interview Prep](docs/interview_prep.md) | Every likely technical interview question about this project with clear answers you can say out loud |
+
+Screenshots of each tool running belong in [docs/screenshots/](docs/screenshots/). Add your own terminal screenshots there and they will be referenced automatically from the docs.

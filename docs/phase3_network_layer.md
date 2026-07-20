@@ -1,82 +1,154 @@
 # Phase 3: Network Layer
 
-The goal of Phase 3 is **connectivity**, bringing the engine online so it can receive orders over a network. We must do this without introducing context-switching overhead or slow text parsing.
+## What This Phase Does
 
-## Logic Explanation: epoll and Binary Protocols
-A traditional web server uses one thread per client. If two clients send orders simultaneously, both threads hit the limit order book at the same time. To prevent corruption, we would need a `std::mutex` (a lock). But locks stall the CPU, ruining latency.
+Phase 3 takes the engine from a standalone in-memory program to a real networked server. It listens on TCP port 9000, accepts multiple client connections simultaneously, and exchanges binary messages over the wire. It does all of this without adding any threads, any locks, or any text parsing overhead.
 
-Instead, we use a single thread running an `epoll` event loop. `epoll` asks the Linux kernel: "Are there any sockets with data ready to read?" The thread reads the data, matches the order, sends the fill out, and loops back around. By never multithreading the core, we **never need locks**.
+## The Problem With Naive Networking
 
-Furthermore, instead of sending JSON (which requires searching for quotes and parsing strings to integers), we send **raw binary C++ structs**. We disable compiler padding so the structs are exactly 14 bytes long. When bytes arrive over the network, we don't parse them; we just cast the memory directly to our struct using `std::memcpy`.
+The simplest approach to handling multiple clients would be one thread per client. When a buy order from Client A and a sell order from Client B arrive at the same moment, two threads would both try to touch the order book at the same time. To prevent corruption you would need a mutex. A mutex means one thread waiting while the other works. That waiting is measured in microseconds, which is catastrophic for a matching engine.
 
-### Example
-1. **Client A** sends a binary packet (14 bytes) representing a Buy order.
-2. **Client B** sends a binary packet (14 bytes) representing a Sell order.
-3. The `epoll_wait` function wakes up and sees both Client A and Client B have data.
-4. The engine reads Client A's 14 bytes, casts it instantly to an `OrderRequest`, and processes it in the engine.
-5. The engine then reads Client B's 14 bytes, casts it, and processes it.
-6. The engine matches A and B and pushes a 14-byte `ExecutionReport` to both sockets.
+A second problem would be the message format. If you use JSON you need to scan every byte looking for quote characters, colons, and brackets. You need to convert ASCII digit strings into integers. Even a highly optimised JSON parser takes hundreds of nanoseconds per message.
 
-Everything happens sequentially on one core, blindingly fast.
+The network layer in this engine avoids both problems completely.
 
-## Code Snippets
+## The Solution: One Thread, epoll, Binary Protocol
 
-### Binary Wire Protocol
-Instead of sending text like `{"type": "new", "price": 101.00}`, we use raw memory structs. 
+Instead of one thread per client, the engine uses a single thread and asks the Linux kernel to tell it exactly which sockets have data ready to read at any moment. This is what `epoll` does.
+
+The engine calls `epoll_wait`. This call blocks until at least one socket has incoming data. When it returns, it hands back a list of file descriptors that are ready. The engine processes each one sequentially: read 14 bytes, route to the matching logic, send the execution report back. Then call `epoll_wait` again.
+
+Because everything happens on one thread, the order book is never accessed by two operations simultaneously. No mutex is needed at any point.
+
+For the message format, every packet is a fixed-width binary struct. The engine knows every message is exactly 14 bytes. There is no scanning, no parsing, and no allocation. Reading a message is a single `recv()` call followed by a `memcpy` into a struct.
+
+## A Concrete Walk-Through
+
+Imagine two clients connect and each sends a 14-byte order.
+
+`epoll_wait` wakes and returns two ready file descriptors.
+
+The engine reads 14 bytes from Client A's socket. It copies those bytes into an `OrderRequest` struct. Since the struct fields are laid out exactly as the bytes arrived, reading the `price` field is a direct memory access with no conversion needed. The engine calls `new_order()` with those values and sends back a 14-byte `ExecutionReport` with status `'A'` for accepted.
+
+The engine then reads 14 bytes from Client B's socket and does the same. If Client B's order crosses Client A's price, the engine generates a fill and sends `ExecutionReport` with status `'F'` to both sockets.
+
+Everything runs sequentially on one core. There is no parallelism and no synchronisation.
+
+## The Binary Wire Protocol
+
+The protocol uses `#pragma pack(push, 1)` to tell the C++ compiler to lay out struct fields with no gaps between them. Without this directive the compiler would add invisible padding bytes to align fields on CPU-friendly boundaries, which would change the struct's size and make it impossible for the Python client to predict where each field starts.
 
 ```cpp
 // include/protocol.hpp
-#pragma pack(push, 1) // Disable compiler padding
+#pragma pack(push, 1)  // No padding allowed
 
-// Exactly 14 bytes
 struct OrderRequest {
-    char     type;       
-    uint32_t order_id;   
-    uint32_t price;      
-    uint32_t quantity;   
-    char     side;       
-};
+    char     type;      // 1 byte: 'N' = new, 'C' = cancel, 'O'/'M'/'D' = query
+    uint32_t order_id;  // 4 bytes
+    uint32_t price;     // 4 bytes, integer cents ($101.00 = 10100)
+    uint32_t quantity;  // 4 bytes
+    char     side;      // 1 byte: 'B' = buy, 'S' = sell
+};                      // Total: 14 bytes, always, on every platform
+
+struct ExecutionReport {
+    char     type;       // 1 byte: 'E'
+    uint32_t order_id;   // 4 bytes
+    uint32_t filled_qty; // 4 bytes
+    uint32_t fill_price; // 4 bytes
+    char     status;     // 1 byte: 'A' = accepted, 'F' = filled, 'C' = cancelled
+};                       // Total: 14 bytes
 
 #pragma pack(pop)
+
+// These lines make the build fail immediately if the sizes are ever wrong
+static_assert(sizeof(OrderRequest)   == 14);
+static_assert(sizeof(ExecutionReport) == 14);
 ```
 
-By packing the struct, we guarantee its size over the wire. Deserializing is instantaneous and zero-copy using strict-aliasing safe `memcpy`:
+On the Python side, the `struct` module packs and unpacks bytes using a format string. `'<cIIIc'` means little-endian, one char, three unsigned 32-bit integers, one char. That produces exactly 14 bytes.
 
-```cpp
-// src/main.cpp (snippet)
-char buf[sizeof(OrderRequest)];
-ssize_t bytes = recv(fd, buf, sizeof(buf), 0);
+```python
+# tests/manual_client.py
+import struct
 
-if (bytes == sizeof(OrderRequest)) {
-    OrderRequest req;
-    std::memcpy(&req, buf, sizeof(OrderRequest)); // 0 overhead cast
-    engine.new_order(req.order_id, req.side, req.price, req.quantity);
-}
+REQ_FMT = '<cIIIc'  # little-endian: char, uint32, uint32, uint32, char = 14 bytes
+
+# Sending a buy order for 100 shares at $101.00 (price = 10100 cents)
+req = struct.pack(REQ_FMT, b'N', 1, 10100, 100, b'B')
+socket.sendall(req)  # Sends exactly 14 bytes
+
+# Reading back a 14-byte execution report
+data = socket.recv(14)
+msg_type, order_id, filled_qty, fill_price, status = struct.unpack(REQ_FMT, data)
 ```
 
-### TCP_NODELAY
-By default, the OS uses Nagle's Algorithm, which buffers small packets to send them together. For a trading engine, this introduces massive latency (often 40ms+). We turn it off on every socket.
+## Why TCP_NODELAY Is Critical
+
+TCP has a feature called Nagle's Algorithm. By default it batches small packets together before sending them, waiting up to 40 milliseconds in hopes that more data will arrive to send in the same segment. This optimises bandwidth but destroys latency. A 14-byte order packet could sit in the kernel's send buffer for 40 milliseconds before being transmitted.
+
+Setting `TCP_NODELAY` disables Nagle's Algorithm. Every call to `send()` results in an immediate network transmission with no waiting.
 
 ```cpp
-// src/main.cpp (snippet)
+// src/main.cpp
 void set_nodelay(int fd) {
     int opt = 1;
     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt));
 }
 ```
 
-### epoll Event Loop
-We register all client sockets to `epoll`. When the OS detects data on a socket, `epoll_wait` wakes up our thread immediately.
+This is called on every socket as soon as it is accepted, including the listening socket.
+
+## Why SIGPIPE Is Ignored
+
+When a client disconnects unexpectedly and the engine calls `send()` to write to that now-dead socket, the OS sends a `SIGPIPE` signal to the process. The default handler for `SIGPIPE` terminates the process immediately. One disconnected client would kill the entire exchange.
+
+Setting `SIGPIPE` to `SIG_IGN` makes `send()` return `-1` instead of crashing the process. The engine sees the error return value, closes the file descriptor, and continues serving the remaining clients.
 
 ```cpp
-// src/main.cpp (snippet)
-int n = epoll_wait(epfd, events, MAX_EVENTS, 100);
+// src/main.cpp — at the top of main(), before anything else
+std::signal(SIGPIPE, SIG_IGN);
+```
+
+## The epoll Event Loop
+
+The loop is the heart of the network layer. Every client socket is registered with `epoll_ctl`. When `epoll_wait` returns, it provides a list of only the ready sockets, not all sockets. This keeps the per-iteration work proportional to activity, not to total connection count.
+
+```cpp
+// src/main.cpp — main event loop
+int n = epoll_wait(epfd, events, MAX_EVENTS, 100 /* ms timeout */);
+
 for (int i = 0; i < n; ++i) {
     int fd = events[i].data.fd;
+
     if (fd == listen_fd) {
-        // Accept new client...
+        // A new client is connecting
+        int client_fd = accept(listen_fd, ...);
+        set_nonblocking(client_fd);
+        set_nodelay(client_fd);
+        epoll_ctl(epfd, EPOLL_CTL_ADD, client_fd, &ev);
+
     } else {
-        // Read binary OrderRequest and push to engine...
+        // An existing client sent data
+        char buf[sizeof(OrderRequest)];
+        ssize_t bytes = recv(fd, buf, sizeof(buf), 0);
+
+        if (bytes <= 0) {
+            // Client disconnected
+            close(fd);
+        } else if (bytes == sizeof(OrderRequest)) {
+            // Process the order
+            OrderRequest req;
+            std::memcpy(&req, buf, sizeof(OrderRequest));
+            // ... route to engine ...
+        }
     }
 }
 ```
+
+## Terminal Output
+
+When the engine starts you see it announce the port it is listening on. Each client connection and disconnection is logged to stdout. The engine terminal shows the server side view while the client terminals show the execution reports.
+
+![Phase 3 engine and client terminal](screenshots/phase3_output.png)
+
+*(Place a screenshot of your engine terminal alongside a client terminal showing accepted orders and fills here)*
