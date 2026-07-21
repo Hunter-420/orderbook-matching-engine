@@ -54,7 +54,7 @@ For deep technical details and code snippets, please see the `docs/` directory. 
 
 ### Phase 1: In-Memory Core Engine
 **What it does:** Implements correct price-time priority matching with no networking and no performance tuning. It proves the matching logic (handling partial fills, cancellations, and order book states) is perfectly correct.
-**Detailed Docs:** `docs/phase1_core_engine.md`
+**Detailed Docs:** [docs/phase1_core_engine.md](docs/phase1_core_engine.md)
 
 **Sample Output (Processing a new order):**
 ```text
@@ -68,7 +68,7 @@ For deep technical details and code snippets, please see the `docs/` directory. 
 
 ### Phase 2: Memory Pool Optimization
 **What it does:** Eliminates OS memory allocation (`new`/`delete`) on the critical path. It introduces a pre-allocated flat `MemoryPool` of one million slots and a flat `vector` order directory for `O(1)` order cancellation lookups.
-**Detailed Docs:** `docs/phase2_memory_pool.md`
+**Detailed Docs:** [docs/phase2_memory_pool.md](docs/phase2_memory_pool.md)
 
 **Sample Output (Validating no allocations):**
 Using `strace`, the output proves that after startup, zero heap allocation calls are made during trading:
@@ -83,7 +83,7 @@ Using `strace`, the output proves that after startup, zero heap allocation calls
 
 ### Phase 3: Network Layer
 **What it does:** Brings the engine online using a non-blocking `epoll` architecture and a zero-copy fixed-width binary wire protocol. It disables Nagle's algorithm with `TCP_NODELAY` to prevent latency spikes.
-**Detailed Docs:** `docs/phase3_network_layer.md`
+**Detailed Docs:** [docs/phase3_network_layer.md](docs/phase3_network_layer.md)
 
 **Sample Output (Python Client interaction):**
 ```text
@@ -99,7 +99,7 @@ Report -> type:E, order_id:1, filled_qty:100, fill_price:101.0, status:F
 
 ### Phase 4: Hardware Isolation and Latency Measurement
 **What it does:** Achieves deterministic latency by pinning the process to a specific CPU core (`pthread_setaffinity_np`) to avoid L1/L2 cache invalidations. Measures performance in the nanosecond range using a pre-allocated `TelemetryBuffer`.
-**Detailed Docs:** `docs/phase4_telemetry.md`
+**Detailed Docs:** [docs/phase4_telemetry.md](docs/phase4_telemetry.md)
 
 **Sample Output (Latency Percentiles after 1000 orders):**
 ```text

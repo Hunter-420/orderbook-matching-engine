@@ -2,12 +2,24 @@
 
 The primary goal of Phase 1 is **correctness**. We build the core logic of the limit order book, proving that price-time priority matching works perfectly before adding performance optimizations.
 
-## Design
+## Logic Explanation: Price-Time Priority
+A limit order book operates on **Price-Time Priority**. 
+- **Price Priority**: Better prices are matched first. For buyers, a higher price is better (they are willing to pay more). For sellers, a lower price is better (they are willing to sell for less).
+- **Time Priority**: If two orders have the exact same price, the order that was placed *first* gets filled *first*.
 
-The limit order book holds resting orders that have not yet been matched. We need to match incoming orders against the opposite side of the book at the best possible price. 
-To do this, we maintain two maps:
-1. **Bids (Buy side):** Sorted highest price first.
-2. **Asks (Sell side):** Sorted lowest price first.
+When an incoming order arrives, it immediately checks the opposite side of the book to see if the prices "cross" (i.e., a buy price is $\ge$ the best sell price). If they do, the orders are matched, and a `Fill` is generated. Any unfilled remainder rests in the book.
+
+### Example
+1. **Alice** sends a Sell order for 100 shares at $101.
+2. **Bob** sends a Sell order for 50 shares at $101.
+3. **Charlie** sends a Buy order for 120 shares at $101.
+
+*Result:*
+- Charlie's Buy price ($101) crosses the best Sell price ($101).
+- Because Alice's order arrived before Bob's, Alice gets filled first.
+- Charlie buys 100 shares from Alice (Alice is now fully filled and removed).
+- Charlie still needs 20 shares, so he buys 20 shares from Bob.
+- Bob is left resting in the book with 30 shares at $101.
 
 ## Code Snippets
 

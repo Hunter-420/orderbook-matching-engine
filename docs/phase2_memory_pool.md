@@ -4,17 +4,28 @@ The primary goal of Phase 2 is **performance**, specifically eliminating Operati
 
 Calling `new` and `delete` invokes the OS heap allocator (`malloc` or similar). This takes hundreds of nanoseconds, requires thread synchronization deep inside the OS, and fragments memory, ruining CPU cache locality.
 
-## Design
+## Logic Explanation: The Free List Memory Pool
+Instead of asking the OS for memory on every order, we ask the OS for memory **once** when the engine starts. We allocate a giant contiguous array (e.g., 1,000,000 slots). This acts as our custom memory arena.
 
-Instead of asking the OS for memory on every order, we ask the OS for memory **once** when the engine starts. We allocate a giant `std::vector` of 1,000,000 `OrderNode` slots.
+To keep track of which slots are empty and which are used, we embed a **free list** into the unused slots.
+When a slot is empty, its `next_idx` variable holds the index of the *next* empty slot. 
+When we need memory, we don't search. We just pop the head off this free list chain in `O(1)` time. When we free an order, we push its slot index back onto the head of the chain.
 
-This is our `MemoryPool`.
+### Example
+Suppose we have a pool of 5 slots.
+Initially, the free list looks like: `Head -> 0 -> 1 -> 2 -> 3 -> 4 -> INVALID`.
+1. **Allocating an order:** We take the Head (Slot 0). The new Head becomes 1. 
+   - `Head -> 1 -> 2 -> 3 -> 4 -> INVALID`.
+2. **Allocating another order:** We take the Head (Slot 1). The new Head becomes 2.
+   - `Head -> 2 -> 3 -> 4 -> INVALID`.
+3. **Freeing Slot 0:** Order 0 is cancelled. We push Slot 0 back to the Head. 
+   - `Head -> 0 -> 2 -> 3 -> 4 -> INVALID`.
+
+This guarantees instant allocation without any kernel system calls.
 
 ## Code Snippets
 
 ### The Free List
-To allocate slots in `O(1)` time without searching, we use an embedded free list. Every unused slot uses its `next_idx` variable to point to the *next* unused slot. 
-
 ```cpp
 // src/memory_pool.cpp
 MemoryPool::MemoryPool() : arena_(CAPACITY), next_free_(0) {

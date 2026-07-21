@@ -2,15 +2,22 @@
 
 The goal of Phase 3 is **connectivity**, bringing the engine online so it can receive orders over a network. We must do this without introducing context-switching overhead or slow text parsing.
 
-## Design
+## Logic Explanation: epoll and Binary Protocols
+A traditional web server uses one thread per client. If two clients send orders simultaneously, both threads hit the limit order book at the same time. To prevent corruption, we would need a `std::mutex` (a lock). But locks stall the CPU, ruining latency.
 
-We use a single-threaded architecture using `epoll`. 
+Instead, we use a single thread running an `epoll` event loop. `epoll` asks the Linux kernel: "Are there any sockets with data ready to read?" The thread reads the data, matches the order, sends the fill out, and loops back around. By never multithreading the core, we **never need locks**.
 
-Multi-threading the order book is an anti-pattern for ultra-low latency because:
-1. Two threads trying to match orders simultaneously require locking (mutexes), which stalls the CPU.
-2. The OS scheduler context-switches threads unpredictably, destroying deterministic latency.
+Furthermore, instead of sending JSON (which requires searching for quotes and parsing strings to integers), we send **raw binary C++ structs**. We disable compiler padding so the structs are exactly 14 bytes long. When bytes arrive over the network, we don't parse them; we just cast the memory directly to our struct using `std::memcpy`.
 
-By using `epoll` in a single thread, we process the network queues and the matching engine sequentially, blindingly fast, without ever locking.
+### Example
+1. **Client A** sends a binary packet (14 bytes) representing a Buy order.
+2. **Client B** sends a binary packet (14 bytes) representing a Sell order.
+3. The `epoll_wait` function wakes up and sees both Client A and Client B have data.
+4. The engine reads Client A's 14 bytes, casts it instantly to an `OrderRequest`, and processes it in the engine.
+5. The engine then reads Client B's 14 bytes, casts it, and processes it.
+6. The engine matches A and B and pushes a 14-byte `ExecutionReport` to both sockets.
+
+Everything happens sequentially on one core, blindingly fast.
 
 ## Code Snippets
 
